@@ -1,0 +1,64 @@
+{{define "title"}}Reading List - Feeder{{end}}
+
+{{define "content"}}
+<h1>Reading List</h1>
+
+<p>
+    <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">
+        Add Link
+    </button>
+</p>
+
+<!-- Modal for adding links -->
+<div id="add-modal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Add a Link</h2>
+            <button class="modal-close" onclick="document.getElementById('add-modal').classList.remove('show')">&times;</button>
+        </div>
+        <form action="/reading-list" method="POST">
+            <div class="form-group">
+                <label for="url">URL</label>
+                <input type="url" id="url" name="url" placeholder="https://example.com/article" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="title">Title (optional)</label>
+                <input type="text" id="title" name="title" placeholder="Leave blank to fetch from page">
+            </div>
+            <div class="form-group">
+                <label for="description">Description (optional)</label>
+                <textarea id="description" name="description" placeholder="Leave blank to fetch from page" style="min-height: 80px;"></textarea>
+            </div>
+            <button type="submit" class="btn">Add to Reading List</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('show')">Cancel</button>
+        </form>
+    </div>
+</div>
+
+<h2>Your Reading List</h2>
+{{if .Active}}
+    {{range .Active}}
+    <div class="card">
+        <h3 class="card-title"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a></h3>
+        <div class="card-meta">{{.URL}}</div>
+        {{if .Description}}
+        <p>{{.Description}}</p>
+        {{end}}
+        <div class="card-meta">Added {{.CreatedAt.Format "Jan 2, 2006"}}</div>
+        <div class="card-actions">
+            <form action="/reading-list/{{.RKey}}/archive" method="POST" style="display:inline">
+                <button type="submit" class="btn btn-danger">Remove</button>
+            </form>
+        </div>
+    </div>
+    {{end}}
+{{else}}
+    <div class="empty">
+        <p>No items in your reading list yet. Add one above!</p>
+    </div>
+{{end}}
+
+{{if .HasArchived}}
+<p style="margin-top: 2rem;"><a href="/reading-list/archive" class="btn btn-secondary">View Archive</a></p>
+{{end}}
+{{end}}

@@ -1,0 +1,42 @@
+{
+  "lexicon": 1,
+  "id": "solanum.solanaceae.net.feed",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An RSS/Atom feed subscription.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["url", "title", "createdAt"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL of the RSS/Atom feed."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The title of the feed."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "A description of the feed content."
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether the feed is actively being checked for updates."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the feed was added."
+          }
+        }
+      }
+    }
+  }
+}

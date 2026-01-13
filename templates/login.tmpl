@@ -1,0 +1,14 @@
+{{define "title"}}Login - Feeder{{end}}
+
+{{define "content"}}
+<h1>Feeder</h1>
+<p>Sign in with your AT Protocol account (Bluesky, etc.)</p>
+
+<form action="/auth/login" method="POST">
+    <div class="form-group">
+        <label for="handle">Handle</label>
+        <input type="text" id="handle" name="handle" placeholder="yourname.bsky.social" required autofocus>
+    </div>
+    <button type="submit" class="btn">Sign In</button>
+</form>
+{{end}}

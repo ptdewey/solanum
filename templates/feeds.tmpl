@@ -1,0 +1,49 @@
+{{define "title"}}Feeds - Feeder{{end}}
+
+{{define "content"}}
+<h1>Your Feeds</h1>
+<p>
+    <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">Add Feed</button>
+    <a href="/feeds/import" class="btn btn-secondary">Import Feeds</a>
+</p>
+
+<!-- Modal for adding feeds -->
+<div id="add-modal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Add Feed</h2>
+            <button class="modal-close" onclick="document.getElementById('add-modal').classList.remove('show')">&times;</button>
+        </div>
+        <form action="/feeds" method="POST">
+            <div class="form-group">
+                <label for="url">Feed URL</label>
+                <input type="url" id="url" name="url" placeholder="https://example.com/feed.xml" required autofocus>
+            </div>
+            <button type="submit" class="btn">Add Feed</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('show')">Cancel</button>
+        </form>
+    </div>
+</div>
+
+{{if .Feeds}}
+    {{range .Feeds}}
+    <div class="card">
+        <h3 class="card-title">{{.Title}}</h3>
+        <div class="card-meta">{{.URL}}</div>
+        {{if .Description}}
+        <p>{{.Description}}</p>
+        {{end}}
+        <div class="card-actions">
+            <form action="/feeds/{{.RKey}}/delete" method="POST" style="display:inline" 
+                  onsubmit="return confirm('Delete this feed?')">
+                <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+        </div>
+    </div>
+    {{end}}
+{{else}}
+    <div class="empty">
+        <p>No feeds yet. <a href="#" onclick="document.getElementById('add-modal').classList.add('show'); return false;">Add your first feed</a> or <a href="/feeds/import">import feeds</a>.</p>
+    </div>
+{{end}}
+{{end}}

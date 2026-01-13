@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "solanum.solanaceae.net.readingItem",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A reading list item (bookmark) for later reading.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["url", "title", "createdAt"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL of the article or page to read."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The title of the reading item."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "A description or excerpt from the content."
+          },
+          "isArchived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this item has been read/archived."
+          },
+          "archivedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the item was archived (marked as read)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the item was added to reading list."
+          }
+        }
+      }
+    }
+  }
+}

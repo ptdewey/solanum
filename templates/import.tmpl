@@ -1,0 +1,164 @@
+{{define "title"}}Import Feeds - Feeder{{end}}
+
+{{define "content"}}
+<h1>Import Feeds</h1>
+
+<div class="card">
+    <h2 class="card-title">Import from Leaflet</h2>
+    <p>Import your RSS subscriptions from <a href="https://leaflet.pub" target="_blank" rel="noopener">Leaflet</a>.</p>
+    
+    <button 
+        class="btn"
+        hx-get="/feeds/import/leaflet/fetch"
+        hx-target="#import-modal-content"
+        hx-trigger="click"
+        onclick="showImportModal()"
+    >
+        Fetch Leaflet Subscriptions
+    </button>
+</div>
+
+<!-- Import Modal -->
+<div id="import-modal" class="modal" onclick="if(event.target === this) closeImportModal()">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h2>Import from Leaflet</h2>
+            <button class="modal-close" onclick="closeImportModal()">&times;</button>
+        </div>
+        <div id="import-modal-content">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>Fetching subscriptions...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .import-list {
+        max-height: 400px;
+        overflow-y: auto;
+        margin: 1rem 0;
+    }
+    .import-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+    }
+    .import-item input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+        margin-top: 0.25rem;
+        flex-shrink: 0;
+    }
+    .import-item-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .import-item-title {
+        font-weight: 500;
+        word-break: break-word;
+    }
+    .import-item-url {
+        font-size: 0.875rem;
+        color: var(--muted);
+        word-break: break-all;
+    }
+    .import-item-error {
+        border-color: #cc0000;
+        background: rgba(204, 0, 0, 0.05);
+    }
+    .import-item-error .error-icon {
+        color: #cc0000;
+        font-weight: bold;
+    }
+    .import-item-error .import-item-title {
+        color: var(--muted);
+    }
+    .error-section {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+    }
+    .error-section h4 {
+        color: #cc0000;
+        margin: 0 0 0.5rem;
+    }
+    .select-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .select-actions button {
+        background: none;
+        border: none;
+        color: var(--accent);
+        cursor: pointer;
+        padding: 0;
+        font-size: 0.875rem;
+    }
+    .select-actions button:hover {
+        text-decoration: underline;
+    }
+    .loading {
+        text-align: center;
+        padding: 2rem;
+    }
+    .loading-spinner {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    .import-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    .import-result {
+        padding: 1rem;
+        border-radius: 4px;
+        margin-top: 1rem;
+    }
+    .import-result.success {
+        background: rgba(0, 153, 0, 0.1);
+        border: 1px solid #009900;
+    }
+    .import-result.error {
+        background: rgba(204, 0, 0, 0.1);
+        border: 1px solid #cc0000;
+    }
+</style>
+
+<script>
+function showImportModal() {
+    // Reset to loading state and show modal
+    document.getElementById('import-modal-content').innerHTML = `
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Fetching subscriptions...</p>
+        </div>
+    `;
+    document.getElementById('import-modal').classList.add('show');
+}
+function closeImportModal() {
+    document.getElementById('import-modal').classList.remove('show');
+}
+function selectAll() {
+    document.querySelectorAll('.import-checkbox').forEach(cb => cb.checked = true);
+}
+function selectNone() {
+    document.querySelectorAll('.import-checkbox').forEach(cb => cb.checked = false);
+}
+</script>
+{{end}}

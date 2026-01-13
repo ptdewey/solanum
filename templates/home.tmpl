@@ -1,0 +1,32 @@
+{{define "title"}}Home - Feeder{{end}}
+
+{{define "content"}}
+<h1>Recent Posts</h1>
+
+{{if .Items}}
+    {{range .Items}}
+    <div class="card">
+        <h3 class="card-title"><a href="{{.Link}}" target="_blank">{{.Title}}</a></h3>
+        <div class="card-meta">
+            {{if .Author}}by {{.Author}} &middot; {{end}}
+            {{if not .Published.IsZero}}{{.Published.Format "Jan 2, 2006"}}{{end}}
+        </div>
+        {{if .Description}}
+        <p>{{.Description}}</p>
+        {{end}}
+        <div class="card-actions">
+            <form action="/reading-list" method="POST" style="display:inline">
+                <input type="hidden" name="url" value="{{.Link}}">
+                <input type="hidden" name="title" value="{{.Title}}">
+                <input type="hidden" name="description" value="{{.Description}}">
+                <button type="submit" class="btn btn-secondary">Save for Later</button>
+            </form>
+        </div>
+    </div>
+    {{end}}
+{{else}}
+    <div class="empty">
+        <p>No posts yet. <a href="/feeds/add">Add some feeds</a> to get started.</p>
+    </div>
+{{end}}
+{{end}}

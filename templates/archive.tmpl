@@ -1,0 +1,32 @@
+{{define "title"}}Archive - Feeder{{end}}
+
+{{define "content"}}
+<h1>Archive</h1>
+
+<p><a href="/reading-list" class="btn btn-secondary">Back to Reading List</a></p>
+
+{{if .Archived}}
+    {{range .Archived}}
+    <div class="card">
+        <h3 class="card-title"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a></h3>
+        <div class="card-meta">{{.URL}}</div>
+        {{if .Description}}
+        <p>{{.Description}}</p>
+        {{end}}
+        <div class="card-meta">
+            Archived {{if .ArchivedAt}}{{.ArchivedAt.Format "Jan 2, 2006"}}{{end}}
+        </div>
+        <div class="card-actions">
+            <form action="/reading-list/{{.RKey}}/delete" method="POST" style="display:inline"
+                  onsubmit="return confirm('Delete this item permanently?')">
+                <button type="submit" class="btn btn-danger">Delete Forever</button>
+            </form>
+        </div>
+    </div>
+    {{end}}
+{{else}}
+    <div class="empty">
+        <p>Your archive is empty.</p>
+    </div>
+{{end}}
+{{end}}
