@@ -15,6 +15,7 @@ import (
 	"github.com/patricktcoakley/solanum/internal/feed"
 	"github.com/patricktcoakley/solanum/internal/web/handlers"
 	"github.com/patricktcoakley/solanum/internal/web/middleware"
+	"github.com/patricktcoakley/solanum/public"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite"
 )
@@ -70,7 +71,7 @@ func main() {
 	feedService := feed.NewService(feedCache)
 
 	// Parse templates - parse base first, then each page with the base
-	baseTemplate, err := template.ParseFS(assets.TemplatesFS, "templates/base.tmpl")
+	baseTemplate, err := template.ParseFS(public.TemplatesFS, "templates/base.tmpl")
 	if err != nil {
 		logger.Fatal().Err(err).Msg("parse base template")
 	}
@@ -78,7 +79,7 @@ func main() {
 	pages := []string{"login.tmpl", "home.tmpl", "feeds.tmpl", "reading_list.tmpl", "archive.tmpl", "import.tmpl"}
 	templates := make(map[string]*template.Template)
 	for _, page := range pages {
-		tmpl, err := template.Must(baseTemplate.Clone()).ParseFS(assets.TemplatesFS, "templates/"+page)
+		tmpl, err := template.Must(baseTemplate.Clone()).ParseFS(public.TemplatesFS, "templates/"+page)
 		if err != nil {
 			logger.Fatal().Err(err).Str("page", page).Msg("parse page template")
 		}
@@ -105,7 +106,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Static files
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.StaticFS)))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(public.StaticFS)))
 
 	// Auth routes
 	mux.HandleFunc("GET /login", authHandler.LoginPage)
@@ -122,7 +123,9 @@ func main() {
 	mux.HandleFunc("GET /feeds/import", feedHandler.ImportPage)
 	mux.HandleFunc("GET /feeds/import/leaflet/fetch", feedHandler.FetchLeafletFeeds)
 	mux.HandleFunc("POST /feeds/import/leaflet/import", feedHandler.ImportSelectedLeafletFeeds)
-	mux.HandleFunc("GET /feeds/{rkey}/view", homeHandler.FeedView)
+	mux.HandleFunc("POST /feeds/refresh", feedHandler.RefreshFeeds)
+	mux.HandleFunc("GET /feeds/cache", feedHandler.GetFeedCache)
+	mux.HandleFunc("GET /feeds/cache/debug", feedHandler.DebugFeedCache)
 	mux.HandleFunc("POST /feeds/{rkey}/delete", feedHandler.DeleteFeed)
 
 	// Protected routes - Reading List

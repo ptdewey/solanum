@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "solanum.solanaceae.net.feed",
+  "id": "net.solanaceae.solanum.feed",
   "defs": {
     "main": {
       "type": "record",

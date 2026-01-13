@@ -9,13 +9,14 @@ import (
 
 // Lexicon NSIDs
 const (
-	FeedNSID            = "solanum.solanaceae.net.feed"
-	ReadingItemNSID     = "solanum.solanaceae.net.readingItem"
+	FeedNSID            = "net.solanaceae.solanum.feed"
+	ReadingItemNSID     = "net.solanaceae.solanum.readingItem"
+	FeedCacheNSID       = "net.solanaceae.solanum.feedCache"
 	LeafletSubscription = "pub.leaflet.graph.subscription"
 )
 
 // Feed represents an RSS/Atom feed subscription stored in the user's PDS.
-// Corresponds to lexicon: solanum.solanaceae.net.feed
+// Corresponds to lexicon: net.solanaceae.solanum.feed
 type Feed struct {
 	URI         string    `json:"uri,omitempty"`         // AT URI (at://did/collection/rkey)
 	CID         string    `json:"cid,omitempty"`         // Content ID
@@ -50,7 +51,7 @@ func (f *Feed) ToRecord() FeedRecord {
 }
 
 // ReadingItem represents a reading list bookmark stored in the user's PDS.
-// Corresponds to lexicon: solanum.solanaceae.net.readingItem
+// Corresponds to lexicon: net.solanaceae.solanum.readingItem
 type ReadingItem struct {
 	URI         string     `json:"uri,omitempty"`         // AT URI
 	CID         string     `json:"cid,omitempty"`         // Content ID
@@ -124,4 +125,68 @@ func (l *LeafletSubscriptionRecord) ExtractDIDAndRKey() (did, rkey string, err e
 	}
 
 	return parts[0], parts[2], nil
+}
+
+// BlobRef represents a reference to an uploaded blob.
+type BlobRef struct {
+	Type     string  `json:"$type"`
+	Ref      CIDLink `json:"ref"`
+	MimeType string  `json:"mimeType"`
+	Size     int     `json:"size"`
+}
+
+// CIDLink represents a CID reference.
+type CIDLink struct {
+	Link string `json:"$link"`
+}
+
+// FeedCache represents cached feed items stored as a blob.
+// Corresponds to lexicon: net.solanaceae.solanum.feedCache
+type FeedCache struct {
+	URI         string    `json:"uri,omitempty"`  // AT URI
+	CID         string    `json:"cid,omitempty"`  // Content ID
+	RKey        string    `json:"rkey,omitempty"` // Record key (always "self")
+	Blob        BlobRef   `json:"blob"`           // Blob reference
+	LastUpdated time.Time `json:"lastUpdated"`    // When cache was last refreshed
+	ItemCount   int       `json:"itemCount"`      // Number of items in cache
+	FeedCount   int       `json:"feedCount"`      // Number of feeds in cache
+}
+
+// FeedCacheRecord is the record format for PDS storage.
+type FeedCacheRecord struct {
+	Type        string  `json:"$type"`
+	Blob        BlobRef `json:"blob"`
+	LastUpdated string  `json:"lastUpdated"`
+	ItemCount   int     `json:"itemCount"`
+	FeedCount   int     `json:"feedCount"`
+}
+
+// ToRecord converts a FeedCache to its PDS record format.
+func (fc *FeedCache) ToRecord() FeedCacheRecord {
+	return FeedCacheRecord{
+		Type:        FeedCacheNSID,
+		Blob:        fc.Blob,
+		LastUpdated: fc.LastUpdated.Format(time.RFC3339),
+		ItemCount:   fc.ItemCount,
+		FeedCount:   fc.FeedCount,
+	}
+}
+
+// FeedCacheData is the JSON structure stored in the blob.
+type FeedCacheData struct {
+	LastUpdated time.Time       `json:"lastUpdated"`
+	Items       []FeedCacheItem `json:"items"`
+}
+
+// FeedCacheItem represents a cached feed item in the blob.
+type FeedCacheItem struct {
+	ID          string    `json:"id"`
+	FeedURL     string    `json:"feedURL"`
+	FeedTitle   string    `json:"feedTitle"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Link        string    `json:"link"`
+	Author      string    `json:"author,omitempty"`
+	Published   time.Time `json:"published"`
+	Content     string    `json:"content,omitempty"`
 }

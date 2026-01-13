@@ -1,0 +1,373 @@
+{{define "title"}}Home - Solanum{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>Recent Posts</h1>
+        <button id="refreshBtn" class="btn btn-primary" onclick="refreshFeeds()">
+            <span id="refreshIcon">↻</span> Refresh Feeds
+        </button>
+    </div>
+    <p id="lastUpdated" class="muted" style="margin-top: 0.5rem;"></p>
+</div>
+
+<div class="search-form">
+    <input 
+        type="text" 
+        id="searchInput"
+        placeholder="Search posts..." 
+        class="search-input"
+        oninput="performSearch()"
+    />
+    <button id="clearSearchBtn" class="btn btn-secondary" onclick="clearSearch()" style="display: none;">Clear</button>
+</div>
+
+<div id="loading" style="text-align: center; padding: 2rem; display: none;">
+    <p>Loading feed items...</p>
+</div>
+
+<div id="results"></div>
+
+<div id="pagination" class="pagination"></div>
+
+<style>
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+.search-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.search-input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 1rem;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.feed-badge {
+    display: inline-block;
+    background: var(--muted);
+    color: var(--text);
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.875rem;
+    margin-right: 0.5rem;
+}
+
+#refreshBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spinning {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+</style>
+
+<script>
+let allItems = [];
+let filteredItems = [];
+let currentPage = 1;
+const itemsPerPage = 25;
+let searchQuery = '';
+
+// Load cache on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadCache();
+});
+
+async function loadCache() {
+    const cachedData = localStorage.getItem('feedCacheData');
+    const cachedTimestamp = localStorage.getItem('feedCacheTimestamp');
+    
+    if (cachedData && cachedTimestamp) {
+        console.log('Using cached data from localStorage');
+        const data = JSON.parse(cachedData);
+        allItems = data.items || [];
+        updateLastUpdated(parseInt(cachedTimestamp));
+        applyFiltersAndRender();
+    } else {
+        console.log('No localStorage cache, fetching from server');
+        // Try to fetch from server
+        await fetchCacheFromServer();
+    }
+}
+
+async function fetchCacheFromServer() {
+    const loading = document.getElementById('loading');
+    loading.style.display = 'block';
+    
+    try {
+        const response = await fetch('/feeds/cache');
+        if (!response.ok) {
+            if (response.status === 404) {
+                // No cache yet - show empty state
+                allItems = [];
+                applyFiltersAndRender();
+                return;
+            }
+            throw new Error('Failed to fetch cache');
+        }
+        
+        const data = await response.json();
+        
+        // Check for blob corruption error
+        if (data.error === 'blob_corrupted') {
+            console.warn('PDS blob was corrupted, user needs to refresh');
+            document.getElementById('results').innerHTML = `
+                <div class="empty">
+                    <p>Your feed cache was corrupted in storage.</p>
+                    <p>Click "Refresh Feeds" to recreate it.</p>
+                </div>
+            `;
+            loading.style.display = 'none';
+            return;
+        }
+        
+        allItems = data.items || [];
+        
+        // Save to localStorage
+        const timestamp = Date.now();
+        localStorage.setItem('feedCacheData', JSON.stringify(data));
+        localStorage.setItem('feedCacheTimestamp', timestamp.toString());
+        
+        updateLastUpdated(timestamp);
+        applyFiltersAndRender();
+    } catch (error) {
+        console.error('Error fetching cache:', error);
+        document.getElementById('results').innerHTML = '<div class="empty"><p>Failed to load feed items. Try refreshing.</p></div>';
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+async function refreshFeeds() {
+    const btn = document.getElementById('refreshBtn');
+    const icon = document.getElementById('refreshIcon');
+    
+    btn.disabled = true;
+    icon.classList.add('spinning');
+    
+    try {
+        const response = await fetch('/feeds/refresh', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to refresh feeds');
+        }
+        
+        const data = await response.json();
+        allItems = data.items || [];
+        
+        // Save to localStorage
+        const timestamp = Date.now();
+        localStorage.setItem('feedCacheData', JSON.stringify(data));
+        localStorage.setItem('feedCacheTimestamp', timestamp.toString());
+        
+        updateLastUpdated(timestamp);
+        applyFiltersAndRender();
+    } catch (error) {
+        console.error('Error refreshing feeds:', error);
+        alert('Failed to refresh feeds. Please try again.');
+    } finally {
+        btn.disabled = false;
+        icon.classList.remove('spinning');
+    }
+}
+
+function updateLastUpdated(timestamp) {
+    const now = Date.now();
+    const diff = Math.floor((now - timestamp) / 1000); // seconds
+    
+    let text = 'Last updated: ';
+    if (diff < 60) {
+        text += 'just now';
+    } else if (diff < 3600) {
+        const minutes = Math.floor(diff / 60);
+        text += `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    } else if (diff < 86400) {
+        const hours = Math.floor(diff / 3600);
+        text += `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    } else {
+        const days = Math.floor(diff / 86400);
+        text += `${days} day${days !== 1 ? 's' : ''} ago`;
+    }
+    
+    document.getElementById('lastUpdated').textContent = text;
+}
+
+function performSearch() {
+    searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+    const clearBtn = document.getElementById('clearSearchBtn');
+    
+    if (searchQuery) {
+        clearBtn.style.display = 'block';
+    } else {
+        clearBtn.style.display = 'none';
+    }
+    
+    currentPage = 1;
+    applyFiltersAndRender();
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    searchQuery = '';
+    document.getElementById('clearSearchBtn').style.display = 'none';
+    currentPage = 1;
+    applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
+    // Filter items based on search
+    if (searchQuery) {
+        filteredItems = allItems.filter(item => {
+            return item.title.toLowerCase().includes(searchQuery) ||
+                   (item.description && item.description.toLowerCase().includes(searchQuery)) ||
+                   (item.author && item.author.toLowerCase().includes(searchQuery)) ||
+                   item.feedTitle.toLowerCase().includes(searchQuery);
+        });
+    } else {
+        filteredItems = allItems;
+    }
+    
+    renderItems();
+    renderPagination();
+}
+
+function renderItems() {
+    const results = document.getElementById('results');
+    
+    if (filteredItems.length === 0) {
+        if (searchQuery) {
+            results.innerHTML = '<div class="empty"><p>No posts match your search.</p></div>';
+        } else if (allItems.length === 0) {
+            results.innerHTML = '<div class="empty"><p>No posts yet. <a href="/feeds">Add some feeds</a> and click "Refresh Feeds" to get started.</p></div>';
+        } else {
+            results.innerHTML = '<div class="empty"><p>No posts found.</p></div>';
+        }
+        return;
+    }
+    
+    // Calculate pagination
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const endIdx = Math.min(startIdx + itemsPerPage, filteredItems.length);
+    const pageItems = filteredItems.slice(startIdx, endIdx);
+    
+    // Render items
+    let html = '';
+    if (searchQuery) {
+        html += `<p class="muted">Found ${filteredItems.length} result${filteredItems.length !== 1 ? 's' : ''} for "${searchQuery}"</p>`;
+    }
+    
+    pageItems.forEach(item => {
+        const date = new Date(item.published);
+        const formattedDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        
+        html += `
+        <div class="card">
+            <div class="card-meta">
+                <span class="feed-badge">${escapeHtml(item.feedTitle)}</span>
+            </div>
+            <h3 class="card-title">
+                <a href="${escapeHtml(item.link)}" target="_blank">${escapeHtml(item.title)}</a>
+            </h3>
+            <div class="card-meta">
+                ${item.author ? escapeHtml(item.author) + ' &middot; ' : ''}
+                ${formattedDate}
+            </div>
+            ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
+            <div class="card-actions">
+                <form action="/reading-list" method="POST" style="display:inline">
+                    <input type="hidden" name="url" value="${escapeHtml(item.link)}">
+                    <input type="hidden" name="title" value="${escapeHtml(item.title)}">
+                    <input type="hidden" name="description" value="${escapeHtml(item.description || '')}">
+                    <button type="submit" class="btn btn-secondary">Save for Later</button>
+                </form>
+            </div>
+        </div>
+        `;
+    });
+    
+    results.innerHTML = html;
+}
+
+function renderPagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+    
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+    
+    const hasPrev = currentPage > 1;
+    const hasNext = currentPage < totalPages;
+    
+    let html = '';
+    
+    if (hasPrev) {
+        html += `<button class="btn" onclick="goToPage(${currentPage - 1})">← Previous</button>`;
+    } else {
+        html += `<button class="btn" disabled>← Previous</button>`;
+    }
+    
+    html += `<span>Page ${currentPage} of ${totalPages}</span>`;
+    
+    if (hasNext) {
+        html += `<button class="btn" onclick="goToPage(${currentPage + 1})">Next →</button>`;
+    } else {
+        html += `<button class="btn" disabled>Next →</button>`;
+    }
+    
+    pagination.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    renderItems();
+    renderPagination();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{{end}}

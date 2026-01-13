@@ -1,0 +1,38 @@
+{
+  "lexicon": 1,
+  "id": "net.solanaceae.solanum.feedCache",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Cached feed items stored as a blob for fast retrieval.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["blob", "lastUpdated", "itemCount"],
+        "properties": {
+          "blob": {
+            "type": "blob",
+            "accept": ["application/json"],
+            "maxSize": 52428800,
+            "description": "JSON blob containing cached feed items."
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the cache was last refreshed."
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of feed items in the cache."
+          },
+          "feedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of feeds included in the cache."
+          }
+        }
+      }
+    }
+  }
+}

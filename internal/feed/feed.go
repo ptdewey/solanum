@@ -142,18 +142,6 @@ func (c *Cache) migrate() error {
 
 		CREATE INDEX IF NOT EXISTS idx_feed_items_feed_url ON feed_items(feed_url);
 		CREATE INDEX IF NOT EXISTS idx_feed_items_published_at ON feed_items(published_at DESC);
-
-		CREATE TABLE IF NOT EXISTS feed_metadata_cache (
-			url TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			description TEXT,
-			link TEXT,
-			language TEXT,
-			last_checked DATETIME NOT NULL,
-			last_updated DATETIME,
-			etag TEXT,
-			last_modified TEXT
-		);
 	`)
 	return err
 }
@@ -194,35 +182,6 @@ func (c *Cache) StoreItems(ctx context.Context, items []Item) error {
 	}
 
 	return tx.Commit()
-}
-
-// GetItemsByFeed retrieves cached items for a specific feed.
-func (c *Cache) GetItemsByFeed(ctx context.Context, feedURL string, limit int) ([]Item, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if limit <= 0 {
-		limit = 50
-	}
-
-	rows, err := c.db.QueryContext(ctx, `
-		SELECT id, feed_url, title, description, link, author, published_at, updated_at, content
-		FROM feed_items
-		WHERE feed_url = ?
-		ORDER BY COALESCE(published_at, fetched_at) DESC
-		LIMIT ?
-	`, feedURL, limit)
-	if err != nil {
-		return nil, fmt.Errorf("query items: %w", err)
-	}
-	defer rows.Close()
-
-	return scanItems(rows)
-}
-
-// GetRecentItems retrieves recent items across all feeds.
-func (c *Cache) GetRecentItems(ctx context.Context, feedURLs []string, limit int) ([]Item, error) {
-	return c.GetRecentItemsPaginated(ctx, feedURLs, "", limit, 0)
 }
 
 // GetRecentItemsPaginated retrieves recent items with pagination and optional search.
@@ -306,15 +265,6 @@ func (c *Cache) CountItems(ctx context.Context, feedURLs []string, search string
 	return count, err
 }
 
-// DeleteItemsByFeed removes all cached items for a feed.
-func (c *Cache) DeleteItemsByFeed(ctx context.Context, feedURL string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	_, err := c.db.ExecContext(ctx, `DELETE FROM feed_items WHERE feed_url = ?`, feedURL)
-	return err
-}
-
 // CleanupOldItems removes items older than the specified duration.
 func (c *Cache) CleanupOldItems(ctx context.Context, olderThan time.Duration) error {
 	c.mu.Lock()
@@ -362,7 +312,7 @@ func scanItems(rows *sql.Rows) ([]Item, error) {
 	return items, rows.Err()
 }
 
-// Service coordinates feed operations between PDS and local cache.
+// Service coordinates feed operations between local cache.
 type Service struct {
 	parser *Parser
 	cache  *Cache
@@ -390,16 +340,6 @@ func (s *Service) RefreshFeed(ctx context.Context, feedURL string) (*Metadata, e
 	return metadata, nil
 }
 
-// GetFeedItems retrieves cached items for a feed.
-func (s *Service) GetFeedItems(ctx context.Context, feedURL string, limit int) ([]Item, error) {
-	return s.cache.GetItemsByFeed(ctx, feedURL, limit)
-}
-
-// GetRecentItems retrieves recent items across multiple feeds.
-func (s *Service) GetRecentItems(ctx context.Context, feedURLs []string, limit int) ([]Item, error) {
-	return s.cache.GetRecentItems(ctx, feedURLs, limit)
-}
-
 // GetRecentItemsPaginated retrieves recent items with pagination and search.
 func (s *Service) GetRecentItemsPaginated(ctx context.Context, feedURLs []string, search string, limit, offset int) ([]Item, error) {
 	return s.cache.GetRecentItemsPaginated(ctx, feedURLs, search, limit, offset)
@@ -413,6 +353,12 @@ func (s *Service) CountItems(ctx context.Context, feedURLs []string, search stri
 // FetchMetadata fetches metadata for a feed URL without caching items.
 func (s *Service) FetchMetadata(ctx context.Context, feedURL string) (*Metadata, error) {
 	return s.parser.FetchMetadata(ctx, feedURL)
+}
+
+// FetchFeed fetches and parses a feed without caching items.
+// Returns metadata and items for immediate use.
+func (s *Service) FetchFeed(ctx context.Context, feedURL string) (*Metadata, []Item, error) {
+	return s.parser.ParseURL(ctx, feedURL)
 }
 
 // HTMLMetadata contains metadata extracted from an HTML page.

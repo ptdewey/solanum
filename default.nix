@@ -1,16 +1,15 @@
-{ lib, buildGoModule, tailwindcss_4 }:
+{ lib, buildGoModule }:
 
 buildGoModule {
   pname = "solanum";
   version = "0.1.0";
   src = ./.;
-  vendorHash = lib.fakeHash;
+  vendorHash = "sha256-FlxtNVM28QB09dgL7VJLU3gJs5wA02EajQ1jWZmZLhs=";
 
-  nativeBuildInputs = [ tailwindcss_4 ];
-
-  preBuild = ''
-    tailwindcss -i static/css/style.css -o static/css/output.css --minify
-  '';
+  # nativeBuildInputs = [ tailwindcss_4 ];
+  # preBuild = ''
+  #   tailwindcss -i static/css/style.css -o static/css/output.css --minify
+  # '';
 
   buildPhase = ''
     runHook preBuild
@@ -40,8 +39,8 @@ buildGoModule {
         mkdir -p $out/share/solanum
 
         # Copy static files and templates
-        cp -r static $out/share/solanum/
-        cp -r templates $out/share/solanum/
+        cp -r public/static $out/share/solanum/
+        cp -r public/templates $out/share/solanum/
         cp solanum $out/bin/solanum-unwrapped
         cat > $out/bin/solanum <<'WRAPPER'
     ${wrapperScript}

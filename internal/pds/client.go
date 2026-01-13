@@ -2,11 +2,14 @@
 package pds
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -233,6 +236,132 @@ func (c *Client) GetLeafletFeedRSSURL(ctx context.Context, publicationURI string
 	}
 
 	return basePath + "/rss", nil
+}
+
+// UploadBlob uploads binary data as a blob to the PDS.
+// Returns the blob reference needed for embedding in records.
+func (c *Client) UploadBlob(ctx context.Context, data []byte, mimeType string) (*BlobRef, error) {
+	// Get the PDS host from the API client
+	pdsHost := c.api.Host
+	endpoint := pdsHost + "/xrpc/com.atproto.repo.uploadBlob"
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", mimeType)
+	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
+
+	// Use the auth method to make the request
+	client := &http.Client{Timeout: 60 * time.Second}
+	var resp *http.Response
+	if c.api.Auth != nil {
+		resp, err = c.api.Auth.DoWithAuth(client, req, syntax.NSID("com.atproto.repo.uploadBlob"))
+	} else {
+		resp, err = client.Do(req)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("upload blob: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var uploadResp struct {
+		Blob BlobRef `json:"blob"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return &uploadResp.Blob, nil
+}
+
+// GetBlob retrieves a blob from the PDS.
+// Returns the blob data and its MIME type.
+func (c *Client) GetBlob(ctx context.Context, cid string) ([]byte, string, error) {
+	pdsHost := c.api.Host
+	endpoint := fmt.Sprintf("%s/xrpc/com.atproto.sync.getBlob?did=%s&cid=%s",
+		pdsHost,
+		url.QueryEscape(c.did.String()),
+		url.QueryEscape(cid))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("get blob: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("fetch failed with status: %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("read blob: %w", err)
+	}
+
+	// Check if we got a file stream object instead of actual data (PDS bug)
+	if len(data) > 0 && data[0] == '{' && bytes.Contains(data, []byte(`"_readableState"`)) {
+		return nil, "", fmt.Errorf("PDS returned file stream object instead of blob data (PDS bug)")
+	}
+
+	mimeType := resp.Header.Get("Content-Type")
+	return data, mimeType, nil
+}
+
+// IsFileStreamError returns true if the error indicates the PDS returned a file stream object
+// instead of blob data (a known PDS bug).
+func IsFileStreamError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "file stream object")
+}
+
+// GetFeedCache retrieves the feed cache record.
+func (c *Client) GetFeedCache(ctx context.Context) (*FeedCache, error) {
+	rec, err := c.getRecord(ctx, FeedCacheNSID, "self")
+	if err != nil {
+		return nil, err
+	}
+
+	var cache FeedCache
+	if err := json.Unmarshal(rec.Value, &cache); err != nil {
+		return nil, fmt.Errorf("unmarshal feed cache: %w", err)
+	}
+	cache.URI = rec.URI
+	cache.CID = rec.CID
+	cache.RKey = "self"
+	return &cache, nil
+}
+
+// CreateFeedCache creates or updates the feed cache record.
+// Uses putRecord to upsert with the literal "self" rkey.
+func (c *Client) CreateFeedCache(ctx context.Context, cache *FeedCache) (string, error) {
+	cache.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, FeedCacheNSID, "self", cache.ToRecord())
+}
+
+// UpdateFeedCache updates the feed cache record.
+func (c *Client) UpdateFeedCache(ctx context.Context, cache *FeedCache) (string, error) {
+	cache.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, FeedCacheNSID, "self", cache.ToRecord())
+}
+
+// DeleteFeedCache removes the feed cache record.
+func (c *Client) DeleteFeedCache(ctx context.Context) error {
+	return c.deleteRecord(ctx, FeedCacheNSID, "self")
 }
 
 // Record represents a generic PDS record response.

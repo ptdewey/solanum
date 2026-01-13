@@ -1,4 +1,4 @@
-{{define "title"}}Feeds - Feeder{{end}}
+{{define "title"}}Feeds - Solanum{{end}}
 
 {{define "content"}}
 <h1>Your Feeds</h1>
@@ -28,12 +28,15 @@
 {{if .Feeds}}
     {{range .Feeds}}
     <div class="card">
-        <h3 class="card-title">{{.Title}}</h3>
+        <h3 class="card-title">
+            <a href="/feeds/{{.RKey}}/view">{{.Title}}</a>
+        </h3>
         <div class="card-meta">{{.URL}}</div>
         {{if .Description}}
         <p>{{.Description}}</p>
         {{end}}
         <div class="card-actions">
+            <a href="/feeds/{{.RKey}}/view" class="btn btn-secondary">View Posts</a>
             <form action="/feeds/{{.RKey}}/delete" method="POST" style="display:inline" 
                   onsubmit="return confirm('Delete this feed?')">
                 <button type="submit" class="btn btn-danger">Delete</button>

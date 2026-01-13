@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -268,15 +269,6 @@ func (h *FeedHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save feed", http.StatusInternalServerError)
 		return
 	}
-
-	// Refresh feed items in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if _, err := h.app.FeedService.RefreshFeed(ctx, feedURL); err != nil {
-			h.app.Logger.Error().Err(err).Str("url", feedURL).Msg("refresh feed")
-		}
-	}()
 
 	http.Redirect(w, r, "/feeds", http.StatusFound)
 }
@@ -553,19 +545,343 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 		}
 
 		imported++
-
-		// Refresh feed items in background
-		go func(url string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if _, err := h.app.FeedService.RefreshFeed(ctx, url); err != nil {
-				h.app.Logger.Error().Err(err).Str("url", url).Msg("refresh feed")
-			}
-		}(rssURL)
 	}
 
 	h.app.Logger.Info().Int("imported", imported).Int("selected", len(feedURLs)).Msg("leaflet import complete")
 	http.Redirect(w, r, "/feeds", http.StatusFound)
+}
+
+// RefreshFeeds fetches all RSS feeds and updates the PDS blob cache.
+func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+
+	// Get all active feeds
+	feeds, err := pdsClient.ListFeeds(r.Context())
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("list feeds")
+		http.Error(w, "Failed to load feeds", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch items from all feeds
+	var allItems []pds.FeedCacheItem
+	for _, feed := range feeds {
+		if !feed.IsActive {
+			continue
+		}
+
+		h.app.Logger.Info().Str("url", feed.URL).Msg("fetching feed")
+
+		metadata, items, err := h.app.FeedService.FetchFeed(r.Context(), feed.URL)
+		if err != nil {
+			h.app.Logger.Error().Err(err).Str("url", feed.URL).Msg("fetch feed")
+			continue
+		}
+
+		h.app.Logger.Info().
+			Str("url", feed.URL).
+			Int("itemCount", len(items)).
+			Msg("fetched feed items")
+
+		// Use feed title from metadata if available, otherwise use stored title
+		feedTitle := feed.Title
+		if metadata.Title != "" {
+			feedTitle = metadata.Title
+		}
+
+		// Convert to cache items
+		for _, item := range items {
+			cacheItem := pds.FeedCacheItem{
+				ID:          item.ID,
+				FeedURL:     feed.URL,
+				FeedTitle:   feedTitle,
+				Title:       item.Title,
+				Description: item.Description,
+				Link:        item.Link,
+				Author:      item.Author,
+				Published:   item.Published,
+				Content:     item.Content,
+			}
+			allItems = append(allItems, cacheItem)
+		}
+	}
+
+	h.app.Logger.Info().Int("totalItems", len(allItems)).Msg("total items fetched from all feeds")
+
+	// Limit to most recent 200 items total
+	if len(allItems) > 200 {
+		// Sort by published date descending
+		// (simplified - items are already roughly sorted by feed)
+		allItems = allItems[:200]
+	}
+
+	h.app.Logger.Info().
+		Int("totalItems", len(allItems)).
+		Int("feedsCount", len(feeds)).
+		Msg("PDS blob: populating cache with feed items")
+
+	// Create cache data JSON
+	cacheData := pds.FeedCacheData{
+		LastUpdated: time.Now().UTC(),
+		Items:       allItems,
+	}
+
+	// Log first few items for debugging
+	if len(allItems) > 0 {
+		h.app.Logger.Info().
+			Str("firstItemTitle", allItems[0].Title).
+			Str("firstItemFeed", allItems[0].FeedTitle).
+			Msg("sample item from cache")
+	}
+
+	jsonData, err := json.Marshal(cacheData)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("marshal cache data")
+		http.Error(w, "Failed to create cache", http.StatusInternalServerError)
+		return
+	}
+
+	// Upload blob to PDS
+	h.app.Logger.Info().
+		Int("blobSize", len(jsonData)).
+		Int("items", len(allItems)).
+		Int("feeds", len(feeds)).
+		Msg("PDS blob: uploading feed cache to PDS")
+	blobRef, err := pdsClient.UploadBlob(r.Context(), jsonData, "application/json")
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("upload blob")
+		http.Error(w, "Failed to upload cache", http.StatusInternalServerError)
+		return
+	}
+
+	h.app.Logger.Info().
+		Str("cid", blobRef.Ref.Link).
+		Int("size", blobRef.Size).
+		Str("mimeType", blobRef.MimeType).
+		Msg("blob uploaded successfully")
+
+	// Create/update cache record
+	cache := &pds.FeedCache{
+		Blob:        *blobRef,
+		LastUpdated: time.Now().UTC(),
+		ItemCount:   len(allItems),
+		FeedCount:   len(feeds),
+	}
+
+	h.app.Logger.Info().
+		Str("collection", pds.FeedCacheNSID).
+		Str("rkey", "self").
+		Interface("blobRef", blobRef).
+		Msg("creating feed cache record")
+
+	cid, err := pdsClient.CreateFeedCache(r.Context(), cache)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("create feed cache")
+		http.Error(w, "Failed to save cache", http.StatusInternalServerError)
+		return
+	}
+
+	h.app.Logger.Info().
+		Str("recordCID", cid).
+		Int("items", len(allItems)).
+		Int("feeds", len(feeds)).
+		Msg("feed cache record created successfully")
+
+	// Return JSON response in same format as GetFeedCache
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"exists":      true,
+		"lastUpdated": cacheData.LastUpdated,
+		"items":       cacheData.Items,
+	})
+}
+
+// GetFeedCache retrieves the cached feed items from the PDS blob.
+func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+
+	// Get cache record
+	cache, err := pdsClient.GetFeedCache(r.Context())
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("get feed cache")
+		// Return empty cache if not found
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"exists": false,
+			"items":  []pds.FeedCacheItem{},
+		})
+		return
+	}
+
+	// Download blob
+	blobData, mimeType, err := pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Str("cid", cache.Blob.Ref.Link).Msg("get blob")
+
+		// Check if this is the PDS file stream bug
+		if pds.IsFileStreamError(err) {
+			h.app.Logger.Warn().
+				Str("cid", cache.Blob.Ref.Link).
+				Msg("PDS returned file stream object instead of blob data - retrying once")
+
+			// Wait briefly and retry once (in case it's a race condition)
+			time.Sleep(500 * time.Millisecond)
+			blobData, mimeType, err = pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
+			if err != nil {
+				h.app.Logger.Error().Err(err).Str("cid", cache.Blob.Ref.Link).Msg("get blob retry failed")
+
+				// Still failing - delete the corrupted cache record
+				h.app.Logger.Warn().
+					Str("oldCid", cache.Blob.Ref.Link).
+					Msg("PDS blob consistently returns file stream, deleting cache record")
+
+				if delErr := pdsClient.DeleteFeedCache(r.Context()); delErr != nil {
+					h.app.Logger.Error().Err(delErr).Msg("failed to delete corrupted cache")
+				}
+
+				// Return empty cache - user needs to refresh
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"exists": false,
+					"items":  []pds.FeedCacheItem{},
+					"error":  "blob_corrupted",
+				})
+				return
+			}
+
+			h.app.Logger.Info().
+				Str("cid", cache.Blob.Ref.Link).
+				Msg("retry succeeded - blob data retrieved")
+		} else {
+			http.Error(w, "Failed to load cache", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if mimeType != "application/json" {
+		h.app.Logger.Error().Str("mimeType", mimeType).Msg("unexpected blob mime type")
+		http.Error(w, "Invalid cache format", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse cache data
+	var cacheData pds.FeedCacheData
+	if err := json.Unmarshal(blobData, &cacheData); err != nil {
+		h.app.Logger.Error().Err(err).Msg("unmarshal cache data")
+		http.Error(w, "Invalid cache data", http.StatusInternalServerError)
+		return
+	}
+
+	h.app.Logger.Info().
+		Int("blobSize", len(blobData)).
+		Int("itemCount", len(cacheData.Items)).
+		Str("cid", cache.Blob.Ref.Link).
+		Msg("✓ Using PDS blob to populate feed cache")
+
+	// Log a sample of items for verification
+	if len(cacheData.Items) > 0 {
+		h.app.Logger.Info().
+			Str("firstItem", cacheData.Items[0].Title).
+			Str("feedTitle", cacheData.Items[0].FeedTitle).
+			Msg("Sample item from PDS blob cache")
+	}
+
+	// Return cache data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"exists":      true,
+		"lastUpdated": cacheData.LastUpdated,
+		"items":       cacheData.Items,
+	})
+}
+
+// DebugFeedCache returns debug information about the feed cache.
+func (h *FeedHandler) DebugFeedCache(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+
+	// Get cache record
+	cache, err := pdsClient.GetFeedCache(r.Context())
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "Cache not found",
+			"exists": false,
+		})
+		return
+	}
+
+	// Download blob
+	blobData, mimeType, err := pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":    "Failed to retrieve blob",
+			"exists":   true,
+			"record":   cache,
+			"blobSize": 0,
+		})
+		return
+	}
+
+	// Parse cache data
+	var cacheData pds.FeedCacheData
+	parseErr := json.Unmarshal(blobData, &cacheData)
+
+	// Return debug info
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"exists":       true,
+		"record":       cache,
+		"blobCID":      cache.Blob.Ref.Link,
+		"blobSize":     len(blobData),
+		"blobMimeType": mimeType,
+		"recordSize":   cache.Blob.Size,
+		"itemCount":    len(cacheData.Items),
+		"parseError":   parseErr,
+		"lastUpdated":  cacheData.LastUpdated,
+	})
 }
 
 // ReadingListHandler handles reading list requests.
@@ -817,6 +1133,16 @@ func NewHomeHandler(app *App) *HomeHandler {
 
 const itemsPerPage = 25
 
+// FeedItemView is a view model for displaying feed items with their feed title.
+type FeedItemView struct {
+	FeedTitle   string
+	Title       string
+	Description string
+	Link        string
+	Author      string
+	Published   time.Time
+}
+
 // Home shows the home page.
 func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
@@ -853,11 +1179,13 @@ func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get feed URLs for recent items query
+	// Create feed URL to title map
+	feedTitleMap := make(map[string]string)
 	feedURLs := make([]string, 0, len(feeds))
 	for _, f := range feeds {
 		if f.IsActive {
 			feedURLs = append(feedURLs, f.URL)
+			feedTitleMap[f.URL] = f.Title
 		}
 	}
 
@@ -885,10 +1213,33 @@ func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 		items = nil
 	}
 
+	h.app.Logger.Info().
+		Int("itemsRetrieved", len(items)).
+		Int("feedCount", len(feedURLs)).
+		Str("source", "local_cache").
+		Msg("Loaded feed items from local cache")
+
+	// Convert to view models with feed titles
+	itemViews := make([]FeedItemView, len(items))
+	for i, item := range items {
+		feedTitle := feedTitleMap[item.FeedURL]
+		if feedTitle == "" {
+			feedTitle = item.FeedURL
+		}
+		itemViews[i] = FeedItemView{
+			FeedTitle:   feedTitle,
+			Title:       item.Title,
+			Description: item.Description,
+			Link:        item.Link,
+			Author:      item.Author,
+			Published:   item.Published,
+		}
+	}
+
 	data := map[string]interface{}{
 		"Session":     session,
 		"Feeds":       feeds,
-		"Items":       items,
+		"Items":       itemViews,
 		"Search":      search,
 		"Page":        page,
 		"TotalPages":  totalPages,
@@ -1001,10 +1352,23 @@ func (h *HomeHandler) FeedView(w http.ResponseWriter, r *http.Request) {
 		items = nil
 	}
 
+	// Convert to view models with feed title
+	itemViews := make([]FeedItemView, len(items))
+	for i, item := range items {
+		itemViews[i] = FeedItemView{
+			FeedTitle:   currentFeed.Title,
+			Title:       item.Title,
+			Description: item.Description,
+			Link:        item.Link,
+			Author:      item.Author,
+			Published:   item.Published,
+		}
+	}
+
 	data := map[string]interface{}{
 		"Session":     session,
 		"Feeds":       feeds,
-		"Items":       items,
+		"Items":       itemViews,
 		"CurrentFeed": currentFeed,
 		"Search":      search,
 		"Page":        page,
