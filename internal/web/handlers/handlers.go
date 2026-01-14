@@ -742,60 +742,37 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Download blob
+	h.app.Logger.Info().
+		Str("cid", cache.Blob.Ref.Link).
+		Str("did", session.DID.String()).
+		Msg("fetching blob from PDS")
+
 	blobData, mimeType, err := pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
 	if err != nil {
-		h.app.Logger.Error().Err(err).Str("cid", cache.Blob.Ref.Link).Msg("get blob")
-
-		// Check if this is the PDS file stream bug
-		if pds.IsFileStreamError(err) {
-			h.app.Logger.Warn().
-				Str("cid", cache.Blob.Ref.Link).
-				Msg("PDS returned file stream object instead of blob data - retrying once")
-
-			// Wait briefly and retry once (in case it's a race condition)
-			time.Sleep(500 * time.Millisecond)
-			blobData, mimeType, err = pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
-			if err != nil {
-				h.app.Logger.Error().Err(err).Str("cid", cache.Blob.Ref.Link).Msg("get blob retry failed")
-
-				// Still failing - delete the corrupted cache record
-				h.app.Logger.Warn().
-					Str("oldCid", cache.Blob.Ref.Link).
-					Msg("PDS blob consistently returns file stream, deleting cache record")
-
-				if delErr := pdsClient.DeleteFeedCache(r.Context()); delErr != nil {
-					h.app.Logger.Error().Err(delErr).Msg("failed to delete corrupted cache")
-				}
-
-				// Return empty cache - user needs to refresh
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"exists": false,
-					"items":  []pds.FeedCacheItem{},
-					"error":  "blob_corrupted",
-				})
-				return
-			}
-
-			h.app.Logger.Info().
-				Str("cid", cache.Blob.Ref.Link).
-				Msg("retry succeeded - blob data retrieved")
-		} else {
-			http.Error(w, "Failed to load cache", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if mimeType != "application/json" {
-		h.app.Logger.Error().Str("mimeType", mimeType).Msg("unexpected blob mime type")
-		http.Error(w, "Invalid cache format", http.StatusInternalServerError)
+		h.app.Logger.Error().
+			Err(err).
+			Str("cid", cache.Blob.Ref.Link).
+			Str("did", session.DID.String()).
+			Msg("get blob failed - this is likely a PDS bug, see error for details")
+		http.Error(w, "Failed to load cache due to PDS blob serving issue", http.StatusInternalServerError)
 		return
 	}
 
-	// Parse cache data
+	h.app.Logger.Info().
+		Int("blobDataSize", len(blobData)).
+		Str("mimeType", mimeType).
+		Str("cid", cache.Blob.Ref.Link).
+		Msg("blob data received successfully")
+
+	// Parse cache data (ignore mime type since PDS may not set it correctly)
 	var cacheData pds.FeedCacheData
 	if err := json.Unmarshal(blobData, &cacheData); err != nil {
-		h.app.Logger.Error().Err(err).Msg("unmarshal cache data")
+		h.app.Logger.Error().
+			Err(err).
+			Int("dataSize", len(blobData)).
+			Str("mimeType", mimeType).
+			Str("dataPreview", string(blobData[:min(200, len(blobData))])).
+			Msg("unmarshal cache data failed")
 		http.Error(w, "Invalid cache data", http.StatusInternalServerError)
 		return
 	}

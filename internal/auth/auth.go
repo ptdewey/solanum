@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -287,13 +288,7 @@ type OAuthService struct {
 // NewOAuthService creates a new OAuth service.
 func NewOAuthService(clientID, callbackURL string, scopes []string, authStore *SQLiteAuthStore) *OAuthService {
 	// Ensure "atproto" scope is included
-	hasAtproto := false
-	for _, s := range scopes {
-		if s == "atproto" {
-			hasAtproto = true
-			break
-		}
-	}
+	hasAtproto := slices.Contains(scopes, "atproto")
 	if !hasAtproto {
 		scopes = append(scopes, "atproto")
 	}

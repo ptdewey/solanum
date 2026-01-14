@@ -20,6 +20,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// OAuth scopes
+var scopes = []string{
+	"atproto",
+	"repo:net.solanaceae.solanum.feedCache",
+	"repo:net.solanaceae.solanum.feed",
+	"repo:net.solanaceae.solanum.readingItem",
+}
+
 func main() {
 	// Parse flags
 	addr := flag.String("addr", ":8080", "HTTP server address")
@@ -45,7 +53,11 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("open database")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error().Err(err).Msg("failed to close database")
+		}
+	}()
 
 	// Initialize stores
 	authStore, err := auth.NewSQLiteAuthStore(db)
@@ -63,8 +75,6 @@ func main() {
 		logger.Fatal().Err(err).Msg("init feed cache")
 	}
 
-	// Initialize OAuth service
-	scopes := []string{"atproto", "transition:generic"}
 	oauthService := auth.NewOAuthService(*clientID, *callbackURL, scopes, authStore)
 
 	// Initialize services

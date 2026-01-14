@@ -6,13 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
@@ -238,95 +237,72 @@ func (c *Client) GetLeafletFeedRSSURL(ctx context.Context, publicationURI string
 	return basePath + "/rss", nil
 }
 
-// UploadBlob uploads binary data as a blob to the PDS.
+// UploadBlob uploads binary data as a blob to the PDS using indigo's native function.
 // Returns the blob reference needed for embedding in records.
 func (c *Client) UploadBlob(ctx context.Context, data []byte, mimeType string) (*BlobRef, error) {
-	// Get the PDS host from the API client
-	pdsHost := c.api.Host
-	endpoint := pdsHost + "/xrpc/com.atproto.repo.uploadBlob"
+	// Use indigo's native RepoUploadBlob function
+	reader := bytes.NewReader(data)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", mimeType)
-	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
-
-	// Use the auth method to make the request
-	client := &http.Client{Timeout: 60 * time.Second}
-	var resp *http.Response
-	if c.api.Auth != nil {
-		resp, err = c.api.Auth.DoWithAuth(client, req, syntax.NSID("com.atproto.repo.uploadBlob"))
-	} else {
-		resp, err = client.Do(req)
-	}
+	output, err := atproto.RepoUploadBlob(ctx, c.api, reader)
 	if err != nil {
 		return nil, fmt.Errorf("upload blob: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+	if output.Blob == nil {
+		return nil, fmt.Errorf("upload succeeded but returned nil blob")
 	}
 
-	var uploadResp struct {
-		Blob BlobRef `json:"blob"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	// Convert LexBlob to our BlobRef format
+	blobRef := &BlobRef{
+		Type:     "blob",
+		MimeType: output.Blob.MimeType,
+		Size:     int(output.Blob.Size),
+		Ref: CIDLink{
+			Link: output.Blob.Ref.String(),
+		},
 	}
 
-	return &uploadResp.Blob, nil
+	return blobRef, nil
 }
 
-// GetBlob retrieves a blob from the PDS.
+// GetBlob retrieves a blob from the PDS using indigo's native function.
 // Returns the blob data and its MIME type.
 func (c *Client) GetBlob(ctx context.Context, cid string) ([]byte, string, error) {
-	pdsHost := c.api.Host
-	endpoint := fmt.Sprintf("%s/xrpc/com.atproto.sync.getBlob?did=%s&cid=%s",
-		pdsHost,
-		url.QueryEscape(c.did.String()),
-		url.QueryEscape(cid))
-
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	// Use indigo's native SyncGetBlob function
+	data, err := atproto.SyncGetBlob(ctx, c.api, cid, c.did.String())
 	if err != nil {
-		return nil, "", fmt.Errorf("create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("get blob: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("fetch failed with status: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("read blob: %w", err)
+		return nil, "", fmt.Errorf("sync get blob: %w", err)
 	}
 
 	// Check if we got a file stream object instead of actual data (PDS bug)
-	if len(data) > 0 && data[0] == '{' && bytes.Contains(data, []byte(`"_readableState"`)) {
-		return nil, "", fmt.Errorf("PDS returned file stream object instead of blob data (PDS bug)")
+	if isFileStreamObject(data) {
+		return nil, "", fmt.Errorf("PDS returned file stream object instead of blob data. This is a bug in the official Bluesky PDS. CID: %s. The blob was likely uploaded with an incompatible method. Try refreshing the feed cache to re-upload", cid)
 	}
 
-	mimeType := resp.Header.Get("Content-Type")
+	// Default mime type (indigo doesn't return it from SyncGetBlob)
+	mimeType := "application/octet-stream"
+	if len(data) > 0 && data[0] == '{' {
+		mimeType = "application/json"
+	}
+
 	return data, mimeType, nil
 }
 
-// IsFileStreamError returns true if the error indicates the PDS returned a file stream object
-// instead of blob data (a known PDS bug).
-func IsFileStreamError(err error) bool {
-	if err == nil {
+// isFileStreamObject checks if the data is a JSON-serialized Node.js ReadStream object
+func isFileStreamObject(data []byte) bool {
+	if len(data) == 0 || data[0] != '{' {
 		return false
 	}
-	return strings.Contains(err.Error(), "file stream object")
+
+	var streamObj map[string]interface{}
+	if err := json.Unmarshal(data, &streamObj); err != nil {
+		return false
+	}
+
+	// Check if this looks like a ReadStream object
+	_, hasPath := streamObj["path"]
+	_, hasReadableState := streamObj["_readableState"]
+	return hasPath && hasReadableState
 }
 
 // GetFeedCache retrieves the feed cache record.
