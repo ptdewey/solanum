@@ -23,9 +23,13 @@ import (
 // OAuth scopes
 var scopes = []string{
 	"atproto",
-	"repo:net.solanaceae.solanum.feedCache",
-	"repo:net.solanaceae.solanum.feed",
-	"repo:net.solanaceae.solanum.readingItem",
+	"transition:generic",
+	// FIX: blob storage scope isn't working.
+	// re-enable these scopes if the issue is addressed.
+	// "repo:net.solanaceae.solanum.feedCache",
+	// "repo:net.solanaceae.solanum.feed",
+	// "repo:net.solanaceae.solanum.readingItem",
+	// "blob:*/*",
 }
 
 func main() {
@@ -43,8 +47,9 @@ func main() {
 		Logger()
 
 	// For development, use 127.0.0.1 client ID if not provided (localhost doesn't work for OAuth)
+	// Note: For localhost OAuth, scopes are passed via the scopes array to NewLocalhostConfig, NOT in the client ID URL
 	if *clientID == "" {
-		*clientID = "http://127.0.0.1:8080?redirect_uri=" + *callbackURL + "&scope=atproto"
+		*clientID = "http://127.0.0.1:8080"
 		logger.Info().Str("client_id", *clientID).Msg("using 127.0.0.1 OAuth client ID for development")
 	}
 
@@ -115,8 +120,11 @@ func main() {
 	// Setup router using stdlib http.ServeMux (Go 1.22+ with method routing)
 	mux := http.NewServeMux()
 
-	// Static files
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(public.StaticFS)))
+	// Static files with proper MIME type handling
+	staticHandler := http.StripPrefix("/static/", http.FileServerFS(public.StaticFS))
+	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
+		staticHandler.ServeHTTP(w, r)
+	})
 
 	// Auth routes
 	mux.HandleFunc("GET /login", authHandler.LoginPage)

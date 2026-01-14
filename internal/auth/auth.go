@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -287,12 +286,6 @@ type OAuthService struct {
 
 // NewOAuthService creates a new OAuth service.
 func NewOAuthService(clientID, callbackURL string, scopes []string, authStore *SQLiteAuthStore) *OAuthService {
-	// Ensure "atproto" scope is included
-	hasAtproto := slices.Contains(scopes, "atproto")
-	if !hasAtproto {
-		scopes = append(scopes, "atproto")
-	}
-
 	var config oauth.ClientConfig
 	if strings.HasPrefix(clientID, "http://localhost") || strings.HasPrefix(clientID, "http://127.0.0.1") {
 		config = oauth.NewLocalhostConfig(callbackURL, scopes)

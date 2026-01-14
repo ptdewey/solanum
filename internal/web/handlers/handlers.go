@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ import (
 )
 
 const sessionCookieName = "solanum_session"
+
+const descLimit = 120
 
 // App holds application dependencies for handlers.
 type App struct {
@@ -566,6 +569,11 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug: Log the scopes from the session data
+	h.app.Logger.Info().
+		Strs("scopes", oauthSess.Data.Scopes).
+		Msg("OAuth session scopes")
+
 	apiClient := oauthSess.APIClient()
 	pdsClient := pds.NewClient(apiClient, session.DID)
 
@@ -605,16 +613,21 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 		// Convert to cache items
 		for _, item := range items {
+			description := item.Description
+			if len(description) > descLimit {
+				description = description[:descLimit] + "..."
+			}
+
 			cacheItem := pds.FeedCacheItem{
 				ID:          item.ID,
 				FeedURL:     feed.URL,
 				FeedTitle:   feedTitle,
 				Title:       item.Title,
-				Description: item.Description,
+				Description: description,
 				Link:        item.Link,
 				Author:      item.Author,
 				Published:   item.Published,
-				Content:     item.Content,
+				// Content field intentionally omitted - we only need metadata in cache
 			}
 			allItems = append(allItems, cacheItem)
 		}
@@ -622,10 +635,13 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 	h.app.Logger.Info().Int("totalItems", len(allItems)).Msg("total items fetched from all feeds")
 
+	// Sort all items by published date (most recent first)
+	sort.Slice(allItems, func(i, j int) bool {
+		return allItems[i].Published.After(allItems[j].Published)
+	})
+
 	// Limit to most recent 200 items total
 	if len(allItems) > 200 {
-		// Sort by published date descending
-		// (simplified - items are already roughly sorted by feed)
 		allItems = allItems[:200]
 	}
 
