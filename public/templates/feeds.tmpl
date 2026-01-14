@@ -1,8 +1,24 @@
 {{define "title"}}Feeds - Solanum{{end}}
 
 {{define "content"}}
+<style>
+.card-actions .btn {
+    min-width: 100px;
+    text-align: center;
+    padding: 0.5rem 1rem;
+    box-sizing: border-box;
+}
+
+.page-actions .btn {
+    min-width: 120px;
+    text-align: center;
+    padding: 0.5rem 1rem;
+    box-sizing: border-box;
+}
+</style>
+
 <h1>Your Feeds</h1>
-<p>
+<p class="page-actions">
     <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">Add Feed</button>
     <a href="/feeds/import" class="btn btn-secondary">Import Feeds</a>
 </p>

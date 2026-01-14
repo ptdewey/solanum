@@ -446,7 +446,7 @@ func (h *FeedHandler) renderLeafletResults(w http.ResponseWriter, available, fai
 
 		for _, feed := range available {
 			html := `<label class="import-item">
-				<input type="checkbox" class="import-checkbox" name="feeds" value="` + feed.RSSURL + `" checked>
+				<input type="checkbox" class="import-checkbox" name="feeds" value="` + feed.RSSURL + `">
 				<div class="import-item-info">
 					<div class="import-item-title">` + template.HTMLEscapeString(feed.Title) + `</div>
 					<div class="import-item-url">` + template.HTMLEscapeString(feed.RSSURL) + `</div>
