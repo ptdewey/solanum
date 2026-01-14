@@ -1,5 +1,55 @@
 {{define "title"}}Import Feeds - Feeder{{end}}
 
+{{define "leaflet-results"}}
+{{if and (eq (len .Available) 0) (eq (len .Failed) 0)}}
+<div class="empty">All your Leaflet subscriptions have already been imported!</div>
+{{else}}
+{{if gt (len .Available) 0}}
+<form action="/feeds/import/leaflet/import" method="POST">
+    <div class="select-actions">
+        <button type="button" onclick="selectAll()">Select All</button> | 
+        <button type="button" onclick="selectNone()">Select None</button>
+    </div>
+    <div class="import-list">
+        {{range .Available}}
+        <label class="import-item">
+            <input type="checkbox" class="import-checkbox" name="feeds" value="{{.RSSURL}}">
+            <div class="import-item-info">
+                <div class="import-item-title">{{.Title}}</div>
+                <div class="import-item-url">{{.RSSURL}}</div>
+            </div>
+        </label>
+        {{end}}
+    </div>
+    <div class="import-actions">
+        <button type="submit" class="btn">Import Selected</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Cancel</button>
+    </div>
+</form>
+{{end}}
+{{if gt .AlreadyImported 0}}
+<p style="color: var(--muted); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
+{{end}}
+{{if gt (len .Failed) 0}}
+<div class="error-section">
+    <h4>Could not resolve ({{len .Failed}})</h4>
+    <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem;">These publications may have been deleted or are unavailable.</p>
+    <div class="import-list" style="max-height: 150px;">
+        {{range .Failed}}
+        <div class="import-item import-item-error">
+            <span class="error-icon">✗</span>
+            <div class="import-item-info">
+                <div class="import-item-title">{{if .Title}}{{.Title}}{{else}}{{.Publication}}{{end}}</div>
+                <div class="import-item-url">{{.Error}}</div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+{{end}}
+
 {{define "content"}}
 <h1>Import Feeds</h1>
 

@@ -118,3 +118,41 @@ func Recover(logger zerolog.Logger) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// SecurityHeaders adds security-related HTTP headers.
+func SecurityHeaders(isProduction bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Content Security Policy
+			csp := "default-src 'self'; " +
+				"script-src 'self' 'unsafe-inline' https://unpkg.com; " +
+				"style-src 'self' 'unsafe-inline'; " +
+				"img-src 'self' data: https:; " +
+				"font-src 'self'; " +
+				"connect-src 'self'; " +
+				"frame-ancestors 'none'; " +
+				"base-uri 'self'; " +
+				"form-action 'self'"
+			w.Header().Set("Content-Security-Policy", csp)
+
+			// HSTS - only set in production
+			if isProduction {
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+
+			// Prevent clickjacking
+			w.Header().Set("X-Frame-Options", "DENY")
+
+			// Prevent MIME sniffing
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+
+			// Disable referrer for external requests
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+			// Disable browser features
+			w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}

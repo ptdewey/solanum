@@ -31,6 +31,7 @@ type App struct {
 	FeedService  *feed.Service
 	Templates    map[string]*template.Template
 	Logger       zerolog.Logger
+	IsProduction bool
 }
 
 // AuthHandler handles OAuth authentication flow.
@@ -73,7 +74,7 @@ func (h *AuthHandler) StartAuth(w http.ResponseWriter, r *http.Request) {
 	authURL, err := h.app.OAuth.StartAuthFlow(r.Context(), handle)
 	if err != nil {
 		h.app.Logger.Error().Err(err).Str("handle", handle).Msg("start auth failed")
-		http.Error(w, "Failed to start authentication: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to start authentication", http.StatusInternalServerError)
 		return
 	}
 
@@ -90,7 +91,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	if errCode := r.URL.Query().Get("error"); errCode != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		h.app.Logger.Error().Str("error", errCode).Str("description", errDesc).Msg("auth callback error")
-		http.Error(w, "Authentication failed: "+errCode, http.StatusBadRequest)
+		http.Error(w, "Authentication failed", http.StatusBadRequest)
 		return
 	}
 
@@ -102,12 +103,22 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	sessData, err := h.app.OAuth.ProcessCallback(r.Context(), state, code, iss)
 	if err != nil {
 		h.app.Logger.Error().Err(err).Msg("complete auth failed")
-		http.Error(w, "Authentication failed: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Authentication failed", http.StatusInternalServerError)
 		return
 	}
 
+	// Session fixation protection: delete any existing session before creating new one
+	if existingCookie, err := r.Cookie(sessionCookieName); err == nil {
+		h.app.UserSessions.DeleteSession(r.Context(), existingCookie.Value)
+	}
+
 	// Create browser session cookie
-	cookieID := generateSessionID()
+	cookieID, err := generateSessionID()
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("generate session ID failed")
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
 
 	// Get handle from the session (we need to look it up)
 	sess, err := h.app.OAuth.ResumeSession(r.Context(), sessData.AccountDID, sessData.SessionID)
@@ -136,7 +147,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		Value:    cookieID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   h.app.IsProduction, // Always secure in production, even behind reverse proxy
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	})
@@ -432,66 +443,26 @@ func (h *FeedHandler) FetchLeafletFeeds(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *FeedHandler) renderLeafletResults(w http.ResponseWriter, available, failed []LeafletFeedResult, alreadyImported int) {
-	// Start with status message
-	if len(available) == 0 && len(failed) == 0 {
-		w.Write([]byte(`<div class="empty">All your Leaflet subscriptions have already been imported!</div>`))
+	tmpl, ok := h.app.Templates["import.tmpl"]
+	if !ok {
+		h.app.Logger.Error().Msg("import template not found")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Available feeds section
-	if len(available) > 0 {
-		w.Write([]byte(`<form action="/feeds/import/leaflet/import" method="POST">`))
-		w.Write([]byte(`<div class="select-actions"><button type="button" onclick="selectAll()">Select All</button> | <button type="button" onclick="selectNone()">Select None</button></div>`))
-		w.Write([]byte(`<div class="import-list">`))
-
-		for _, feed := range available {
-			html := `<label class="import-item">
-				<input type="checkbox" class="import-checkbox" name="feeds" value="` + feed.RSSURL + `">
-				<div class="import-item-info">
-					<div class="import-item-title">` + template.HTMLEscapeString(feed.Title) + `</div>
-					<div class="import-item-url">` + template.HTMLEscapeString(feed.RSSURL) + `</div>
-				</div>
-			</label>`
-			w.Write([]byte(html))
-		}
-
-		w.Write([]byte(`</div>`))
-		w.Write([]byte(`<div class="import-actions">`))
-		w.Write([]byte(`<button type="submit" class="btn">Import Selected</button>`))
-		w.Write([]byte(`<button type="button" class="btn btn-secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Cancel</button>`))
-		w.Write([]byte(`</div></form>`))
+	data := struct {
+		Available       []LeafletFeedResult
+		Failed          []LeafletFeedResult
+		AlreadyImported int
+	}{
+		Available:       available,
+		Failed:          failed,
+		AlreadyImported: alreadyImported,
 	}
 
-	// Already imported message
-	if alreadyImported > 0 {
-		html := `<p style="color: var(--muted); margin-top: 1rem; font-size: 0.875rem;">` +
-			template.HTMLEscapeString(strconv.Itoa(alreadyImported)) + ` subscription(s) already imported.</p>`
-		w.Write([]byte(html))
-	}
-
-	// Failed section
-	if len(failed) > 0 {
-		w.Write([]byte(`<div class="error-section">`))
-		w.Write([]byte(`<h4>Could not resolve (` + template.HTMLEscapeString(strconv.Itoa(len(failed))) + `)</h4>`))
-		w.Write([]byte(`<p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem;">These publications may have been deleted or are unavailable.</p>`))
-		w.Write([]byte(`<div class="import-list" style="max-height: 150px;">`))
-
-		for _, feed := range failed {
-			title := feed.Title
-			if title == "" {
-				title = feed.Publication
-			}
-			html := `<div class="import-item import-item-error">
-				<span class="error-icon">✗</span>
-				<div class="import-item-info">
-					<div class="import-item-title">` + template.HTMLEscapeString(title) + `</div>
-					<div class="import-item-url">` + template.HTMLEscapeString(feed.Error) + `</div>
-				</div>
-			</div>`
-			w.Write([]byte(html))
-		}
-
-		w.Write([]byte(`</div></div>`))
+	if err := tmpl.ExecuteTemplate(w, "leaflet-results", data); err != nil {
+		h.app.Logger.Error().Err(err).Msg("render leaflet results")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
@@ -1415,8 +1386,10 @@ func GetSessionFromContext(ctx context.Context) *auth.Session {
 	return getSession(ctx)
 }
 
-func generateSessionID() string {
+func generateSessionID() (string, error) {
 	b := make([]byte, 32)
-	rand.Read(b)
-	return base64.URLEncoding.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }

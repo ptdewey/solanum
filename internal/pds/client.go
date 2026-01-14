@@ -18,6 +18,10 @@ import (
 
 const slingshotBaseURL = "https://slingshot.microcosm.blue"
 
+// MaxBlobSize is the maximum size of a blob in bytes (1MB).
+// AT Protocol spec allows up to 1MB blobs.
+const MaxBlobSize = 1024 * 1024
+
 // Client provides methods for reading and writing records to a user's PDS.
 type Client struct {
 	api *atclient.APIClient
@@ -240,6 +244,11 @@ func (c *Client) GetLeafletFeedRSSURL(ctx context.Context, publicationURI string
 // UploadBlob uploads binary data as a blob to the PDS using indigo's native function.
 // Returns the blob reference needed for embedding in records.
 func (c *Client) UploadBlob(ctx context.Context, data []byte, mimeType string) (*BlobRef, error) {
+	// Validate blob size
+	if len(data) > MaxBlobSize {
+		return nil, fmt.Errorf("blob size %d exceeds maximum allowed size %d bytes", len(data), MaxBlobSize)
+	}
+
 	// Use indigo's native RepoUploadBlob function
 	reader := bytes.NewReader(data)
 

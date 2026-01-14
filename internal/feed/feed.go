@@ -6,7 +6,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +21,7 @@ var (
 	ErrFeedNotFound = errors.New("feed not found")
 	ErrInvalidURL   = errors.New("invalid feed URL")
 	ErrFetchFailed  = errors.New("failed to fetch feed")
+	ErrSSRFBlocked  = errors.New("URL is blocked for security reasons")
 )
 
 // Item represents a single item/post from an RSS/Atom feed.
@@ -32,6 +35,99 @@ type Item struct {
 	Published   time.Time
 	Updated     time.Time
 	Content     string
+}
+
+// ValidateFeedURL checks if a URL is safe to fetch (SSRF protection).
+func ValidateFeedURL(feedURL string) error {
+	parsedURL, err := url.Parse(feedURL)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidURL, err)
+	}
+
+	// Only allow http and https schemes
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("%w: only http and https schemes allowed", ErrSSRFBlocked)
+	}
+
+	// Get hostname
+	hostname := parsedURL.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("%w: missing hostname", ErrInvalidURL)
+	}
+
+	// Block localhost and private IP ranges
+	if isPrivateOrLocalhost(hostname) {
+		return fmt.Errorf("%w: localhost and private IPs are not allowed", ErrSSRFBlocked)
+	}
+
+	// Resolve hostname to IP addresses
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return fmt.Errorf("%w: cannot resolve hostname", ErrInvalidURL)
+	}
+
+	// Check all resolved IPs
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("%w: hostname resolves to private IP", ErrSSRFBlocked)
+		}
+	}
+
+	return nil
+}
+
+// isPrivateOrLocalhost checks if a hostname is localhost or a private address.
+func isPrivateOrLocalhost(hostname string) bool {
+	hostname = strings.ToLower(hostname)
+
+	// Check for localhost variants
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" ||
+		strings.HasPrefix(hostname, "localhost.") || strings.HasPrefix(hostname, "127.") ||
+		hostname == "0.0.0.0" {
+		return true
+	}
+
+	// Check for AWS/GCP/Azure metadata endpoints
+	metadataEndpoints := []string{
+		"169.254.169.254", // AWS, Azure, GCP metadata
+		"metadata.google.internal",
+		"169.254.170.2", // AWS ECS
+	}
+	for _, endpoint := range metadataEndpoints {
+		if hostname == endpoint {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isPrivateIP checks if an IP address is in a private range.
+func isPrivateIP(ip net.IP) bool {
+	// Private IPv4 ranges
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",    // Loopback
+		"169.254.0.0/16", // Link-local (AWS metadata)
+		"224.0.0.0/4",    // Multicast
+		"240.0.0.0/4",    // Reserved
+	}
+
+	for _, cidr := range privateRanges {
+		_, subnet, _ := net.ParseCIDR(cidr)
+		if subnet.Contains(ip) {
+			return true
+		}
+	}
+
+	// Check for IPv6 private addresses
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	return false
 }
 
 // Metadata contains parsed feed metadata.
@@ -57,6 +153,11 @@ func NewParser() *Parser {
 
 // ParseURL fetches and parses a feed from a URL.
 func (p *Parser) ParseURL(ctx context.Context, url string) (*Metadata, []Item, error) {
+	// Validate URL for SSRF protection
+	if err := ValidateFeedURL(url); err != nil {
+		return nil, nil, err
+	}
+
 	feed, err := p.parser.ParseURLWithContext(url, ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
@@ -369,6 +470,11 @@ type HTMLMetadata struct {
 
 // FetchHTMLMetadata fetches metadata from an HTML page.
 func (s *Service) FetchHTMLMetadata(ctx context.Context, url string) (*HTMLMetadata, error) {
+	// Validate URL for SSRF protection
+	if err := ValidateFeedURL(url); err != nil {
+		return nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

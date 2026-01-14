@@ -299,7 +299,7 @@ function renderItems() {
     // Render items
     let html = '';
     if (searchQuery) {
-        html += `<p class="muted">Found ${filteredItems.length} result${filteredItems.length !== 1 ? 's' : ''} for "${searchQuery}"</p>`;
+        html += `<p class="muted">Found ${filteredItems.length} result${filteredItems.length !== 1 ? 's' : ''} for "${escapeHtml(searchQuery)}"</p>`;
     }
     
     pageItems.forEach(item => {

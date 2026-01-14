@@ -38,6 +38,7 @@ func main() {
 	dbPath := flag.String("db", "solanum.db", "SQLite database path")
 	clientID := flag.String("client-id", "", "OAuth client ID (use 127.0.0.1 URL for development)")
 	callbackURL := flag.String("callback-url", "http://127.0.0.1:8080/auth/callback", "OAuth callback URL")
+	production := flag.Bool("production", false, "Run in production mode (enables HSTS, secure cookies)")
 	flag.Parse()
 
 	// Setup logger
@@ -109,6 +110,7 @@ func main() {
 		FeedService:  feedService,
 		Templates:    templates,
 		Logger:       logger,
+		IsProduction: *production,
 	}
 
 	// Create handlers
@@ -157,6 +159,7 @@ func main() {
 	handler := middleware.Chain(
 		middleware.Recover(logger),
 		middleware.Logger(logger),
+		middleware.SecurityHeaders(*production),
 		middleware.CSRF("http://127.0.0.1:8080"), // Trust our own origin
 		middleware.Auth(userSessions),
 	)(mux)
