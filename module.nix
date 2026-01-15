@@ -1,8 +1,8 @@
 { config, lib, pkgs, ... }:
 
-let cfg = config.services.solanum;
+let cfg = config.services.solanum-rss;
 in {
-  options.services.solanum = {
+  options.services.solanum-rss = {
     enable = lib.mkEnableOption "Solanum ATProto RSS feed aggregator service";
 
     package = lib.mkOption {
@@ -73,19 +73,19 @@ in {
 
     dataDir = lib.mkOption {
       type = lib.types.path;
-      default = "/var/lib/solanum";
+      default = "/var/lib/solanum-rss";
       description = "Directory where solanum stores its data (database, OAuth sessions, etc.).";
     };
 
     user = lib.mkOption {
       type = lib.types.str;
-      default = "solanum";
+      default = "solanum-rss";
       description = "User account under which solanum runs.";
     };
 
     group = lib.mkOption {
       type = lib.types.str;
-      default = "solanum";
+      default = "solanum-rss";
       description = "Group under which solanum runs.";
     };
 
@@ -97,7 +97,7 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
-    users.users.${cfg.user} = lib.mkIf (cfg.user == "solanum") {
+    users.users.${cfg.user} = lib.mkIf (cfg.user == "solanum-rss") {
       isSystemUser = true;
       group = cfg.group;
       description = "Solanum service user";
@@ -105,9 +105,9 @@ in {
       createHome = true;
     };
 
-    users.groups.${cfg.group} = lib.mkIf (cfg.group == "solanum") { };
+    users.groups.${cfg.group} = lib.mkIf (cfg.group == "solanum-rss") { };
 
-    systemd.services.solanum = {
+    systemd.services.solanum-rss = {
       description = "Solanum ATProto RSS Feed Aggregator Service";
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
