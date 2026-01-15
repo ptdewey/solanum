@@ -43,36 +43,9 @@ func NewAuthHandler(app *App) *AuthHandler {
 	return &AuthHandler{app: app}
 }
 
-// ClientMetadata returns the OAuth client metadata required for public clients.
+// ClientMetadata serves the OAuth client metadata document.
 func (h *AuthHandler) ClientMetadata(w http.ResponseWriter, r *http.Request) {
-	// Get the client ID and callback URL from the app's OAuth config
-	// We reconstruct the URLs from the request host
-	scheme := "https"
-	if r.TLS == nil {
-		// Check X-Forwarded-Proto header for reverse proxies
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		} else {
-			scheme = "http"
-		}
-	}
-
-	host := r.Host
-	clientID := scheme + "://" + host
-	redirectURI := clientID + "/auth/callback"
-
-	metadata := map[string]interface{}{
-		"client_id":                  clientID,
-		"client_name":                "Solanum",
-		"client_uri":                 clientID,
-		"redirect_uris":              []string{redirectURI},
-		"scope":                      "atproto",
-		"grant_types":                []string{"authorization_code", "refresh_token"},
-		"response_types":             []string{"code"},
-		"token_endpoint_auth_method": "none",
-		"application_type":           "web",
-		"dpop_bound_access_tokens":   true,
-	}
+	metadata := h.app.OAuth.ClientMetadata()
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {

@@ -331,3 +331,9 @@ func (s *OAuthService) ResumeSession(ctx context.Context, did syntax.DID, sessio
 func (s *OAuthService) Logout(ctx context.Context, did syntax.DID, sessionID string) error {
 	return s.app.Logout(ctx, did, sessionID)
 }
+
+// ClientMetadata returns the OAuth client metadata document.
+// This should be served at the client_id URL at /client-metadata.json
+func (s *OAuthService) ClientMetadata() oauth.ClientMetadata {
+	return s.app.Config.ClientMetadata()
+}
