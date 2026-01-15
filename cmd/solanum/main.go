@@ -131,32 +131,29 @@ func main() {
 	if clientID == "" && redirectURI == "" {
 		// Use public URL if set, otherwise localhost defaults for development
 		if publicURL != "" {
-			redirectURI = publicURL + "/auth/callback"
+			redirectURI = publicURL + "/oauth/callback"
 			clientID = publicURL
 			log.Info().
 				Str("public_url", publicURL).
+				Str("client_id", clientID).
+				Str("redirect_uri", redirectURI).
 				Msg("Using public URL for OAuth (reverse proxy mode)")
 		} else {
-			redirectURI = fmt.Sprintf("http://127.0.0.1:%s/auth/callback", port)
+			redirectURI = fmt.Sprintf("http://127.0.0.1:%s/oauth/callback", port)
 			clientID = fmt.Sprintf("http://127.0.0.1:%s", port)
-			log.Info().Msg("Using localhost OAuth mode (for development)")
+			log.Info().
+				Str("client_id", clientID).
+				Str("redirect_uri", redirectURI).
+				Msg("Using localhost OAuth mode (for development)")
 		}
+	} else {
+		log.Info().
+			Str("client_id", clientID).
+			Str("redirect_uri", redirectURI).
+			Msg("Using explicit OAuth configuration from environment")
 	}
 
 	oauthService := auth.NewOAuthService(clientID, redirectURI, scopes, authStore)
-
-	if clientID == "" {
-		log.Info().
-			Str("mode", "localhost development").
-			Str("redirect_uri", redirectURI).
-			Msg("OAuth configured")
-	} else {
-		log.Info().
-			Str("mode", "public").
-			Str("client_id", clientID).
-			Str("redirect_uri", redirectURI).
-			Msg("OAuth configured")
-	}
 
 	feedService := feed.NewService()
 	log.Info().Msg("Feed service initialized")

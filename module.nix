@@ -1,6 +1,18 @@
 { config, lib, pkgs, ... }:
 
-let cfg = config.services.solanum-rss;
+let 
+  cfg = config.services.solanum-rss;
+  
+  # Derive OAuth configuration from serverPublicUrl if not explicitly set
+  effectiveClientId = 
+    if cfg.oauth.clientId != null then cfg.oauth.clientId
+    else if cfg.settings.serverPublicUrl != null then "${cfg.settings.serverPublicUrl}/client-metadata.json"
+    else null;
+  
+  effectiveRedirectUri = 
+    if cfg.oauth.redirectUri != null then cfg.oauth.redirectUri
+    else if cfg.settings.serverPublicUrl != null then "${cfg.settings.serverPublicUrl}/oauth/callback"
+    else null;
 in {
   options.services.solanum-rss = {
     enable = lib.mkEnableOption "Solanum ATProto RSS feed aggregator service";
@@ -50,12 +62,13 @@ in {
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          OAuth client ID. This is typically your server's public URL.
-          For example: https://solanum.example.com
+          OAuth client ID. This is typically your server's public URL with /client-metadata.json.
+          For example: https://solanum.example.com/client-metadata.json
           
-          If not set, will be derived from serverPublicUrl or use localhost for development.
+          If not set, will be automatically derived from serverPublicUrl as {serverPublicUrl}/client-metadata.json.
+          If serverPublicUrl is also not set, the application will use localhost defaults for development.
         '';
-        example = "https://solanum.example.com";
+        example = "https://solanum.example.com/client-metadata.json";
       };
 
       redirectUri = lib.mkOption {
@@ -63,11 +76,12 @@ in {
         default = null;
         description = ''
           OAuth redirect URI. This is where users are redirected after authentication.
-          For example: https://solanum.example.com/auth/callback
+          For example: https://solanum.example.com/oauth/callback
           
-          If not set, will be derived from serverPublicUrl or use localhost for development.
+          If not set, will be automatically derived from serverPublicUrl as {serverPublicUrl}/oauth/callback.
+          If serverPublicUrl is also not set, the application will use localhost defaults for development.
         '';
-        example = "https://solanum.example.com/auth/callback";
+        example = "https://solanum.example.com/oauth/callback";
       };
     };
 
@@ -146,10 +160,10 @@ in {
         DB_PATH = "${cfg.dataDir}/solanum.db";
       } // lib.optionalAttrs (cfg.settings.serverPublicUrl != null) {
         SERVER_PUBLIC_URL = cfg.settings.serverPublicUrl;
-      } // lib.optionalAttrs (cfg.oauth.clientId != null) {
-        OAUTH_CLIENT_ID = cfg.oauth.clientId;
-      } // lib.optionalAttrs (cfg.oauth.redirectUri != null) {
-        OAUTH_REDIRECT_URI = cfg.oauth.redirectUri;
+      } // lib.optionalAttrs (effectiveClientId != null) {
+        OAUTH_CLIENT_ID = effectiveClientId;
+      } // lib.optionalAttrs (effectiveRedirectUri != null) {
+        OAUTH_REDIRECT_URI = effectiveRedirectUri;
       };
     };
 

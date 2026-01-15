@@ -56,6 +56,28 @@ func (h *AuthHandler) ClientMetadata(w http.ResponseWriter, r *http.Request) {
 
 // LoginPage renders the login form.
 func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+	// Check if already logged in
+	session := getSession(r.Context())
+	if session != nil {
+		h.app.Logger.Info().
+			Str("did", session.DID.String()).
+			Msg("User already logged in, redirecting to home")
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	// Log cookie status for debugging
+	cookie, err := r.Cookie(sessionCookieName)
+	h.app.Logger.Info().
+		Bool("has_cookie", err == nil).
+		Str("cookie_value", func() string {
+			if err == nil {
+				return cookie.Value[:min(10, len(cookie.Value))] + "..."
+			}
+			return "none"
+		}()).
+		Msg("Login page accessed")
+
 	tmpl, ok := h.app.Templates["login.tmpl"]
 	if !ok {
 		h.app.Logger.Error().Msg("login template not found")
@@ -97,6 +119,14 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	iss := r.URL.Query().Get("iss")
 
+	h.app.Logger.Info().
+		Str("state", state).
+		Str("iss", iss).
+		Bool("has_code", code != "").
+		Str("remote_addr", r.RemoteAddr).
+		Str("referer", r.Referer()).
+		Msg("OAuth callback received")
+
 	// Check for error response from auth server
 	if errCode := r.URL.Query().Get("error"); errCode != "" {
 		errDesc := r.URL.Query().Get("error_description")
@@ -106,16 +136,26 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if state == "" || code == "" || iss == "" {
+		h.app.Logger.Error().
+			Bool("has_state", state != "").
+			Bool("has_code", code != "").
+			Bool("has_iss", iss != "").
+			Msg("Missing required OAuth parameters")
 		http.Error(w, "Missing required parameters", http.StatusBadRequest)
 		return
 	}
 
 	sessData, err := h.app.OAuth.ProcessCallback(r.Context(), state, code, iss)
 	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("complete auth failed")
+		h.app.Logger.Error().Err(err).Str("iss", iss).Msg("complete auth failed")
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
 		return
 	}
+
+	h.app.Logger.Info().
+		Str("did", sessData.AccountDID.String()).
+		Str("session_id", sessData.SessionID).
+		Msg("OAuth session created successfully")
 
 	// Session fixation protection: delete any existing session before creating new one
 	if existingCookie, err := r.Cookie(sessionCookieName); err == nil {
@@ -152,6 +192,12 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	_ = sess
 
 	// Set session cookie
+	// Note: SameSite=Lax works for OAuth callback redirects (which are GET requests)
+	h.app.Logger.Info().
+		Str("cookieID", cookieID).
+		Bool("secure", h.app.IsProduction).
+		Msg("Setting session cookie")
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    cookieID,
@@ -163,6 +209,11 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, "/", http.StatusFound)
+
+	h.app.Logger.Info().
+		Str("did", sessData.AccountDID.String()).
+		Str("cookie_id", cookieID).
+		Msg("Login successful, redirecting to home")
 }
 
 // Logout logs the user out.
@@ -1366,6 +1417,13 @@ type FeedItemView struct {
 // Home shows the home page.
 func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
+
+	h.app.Logger.Info().
+		Bool("has_session", session != nil).
+		Str("path", r.URL.Path).
+		Str("remote_addr", r.RemoteAddr).
+		Msg("Home page accessed")
+
 	if session == nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return

@@ -31,9 +31,9 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 
 	// Auth routes
 	mux.HandleFunc("GET /login", authHandler.LoginPage)
-	mux.HandleFunc("POST /auth/login", authHandler.StartAuth)
-	mux.HandleFunc("GET /auth/callback", authHandler.Callback)
-	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
+	mux.HandleFunc("POST /oauth/login", authHandler.StartAuth)
+	mux.HandleFunc("GET /oauth/callback", authHandler.Callback)
+	mux.HandleFunc("POST /oauth/logout", authHandler.Logout)
 
 	// Protected routes - Home
 	mux.HandleFunc("GET /", homeHandler.Home)

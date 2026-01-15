@@ -57,6 +57,7 @@ func Auth(sessions *auth.UserSessionStore) func(http.Handler) http.Handler {
 			session, err := sessions.GetSession(r.Context(), cookie.Value)
 			if err != nil {
 				// Invalid or expired session, continue without session
+				// Log at debug level to avoid noise
 				next.ServeHTTP(w, r)
 				return
 			}
