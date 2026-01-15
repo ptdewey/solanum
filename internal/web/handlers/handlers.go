@@ -357,7 +357,15 @@ type LeafletFeedResult struct {
 	Error       string
 }
 
-// FetchLeafletFeeds fetches and resolves Leaflet subscriptions, returning HTML partial.
+// LeafletSubscriptionView represents a Leaflet subscription for display without fetching feed details.
+type LeafletSubscriptionView struct {
+	Publication string // AT URI
+	Title       string
+	RSSURL      string // RSS URL for display
+}
+
+// FetchLeafletFeeds fetches Leaflet subscriptions and displays them for selection.
+// RSS URLs are resolved for display, but feed content is only fetched when importing.
 func (h *FeedHandler) FetchLeafletFeeds(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
 	if session == nil {
@@ -391,12 +399,11 @@ func (h *FeedHandler) FetchLeafletFeeds(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get existing feeds to mark already imported ones
+	// Get existing feeds to filter out already imported ones
 	existingFeeds, err := pdsClient.ListFeeds(r.Context())
 	if err != nil {
 		h.app.Logger.Error().Err(err).Msg("list feeds")
-		// Non-fatal, continue without duplicate detection
-		existingFeeds = []pds.Feed{}
+		existingFeeds = []pds.Feed{} // Non-fatal, continue
 	}
 
 	existingURLs := make(map[string]bool)
@@ -404,39 +411,41 @@ func (h *FeedHandler) FetchLeafletFeeds(w http.ResponseWriter, r *http.Request) 
 		existingURLs[feed.URL] = true
 	}
 
-	// Resolve each subscription
-	var available []LeafletFeedResult
-	var failed []LeafletFeedResult
+	// Resolve RSS URLs and fetch titles for display
+	var available []LeafletSubscriptionView
 	var alreadyImported int
 
 	for _, sub := range leafletSubs {
+		// Resolve the RSS URL for display purposes
 		rssURL, err := pdsClient.GetLeafletFeedRSSURL(r.Context(), sub.Publication)
 		if err != nil {
-			failed = append(failed, LeafletFeedResult{
-				Publication: sub.Publication,
-				Title:       sub.Title,
-				Error:       err.Error(),
-			})
+			h.app.Logger.Warn().Err(err).Str("publication", sub.Publication).Msg("failed to resolve RSS URL, skipping")
 			continue
 		}
 
+		// Skip if already imported
 		if existingURLs[rssURL] {
 			alreadyImported++
 			continue
 		}
 
-		// Try to get title from feed metadata
+		// Use title from subscription if available
 		title := sub.Title
+
+		// If no title, fetch it from the RSS feed
 		if title == "" {
 			metadata, err := h.app.FeedService.FetchMetadata(r.Context(), rssURL)
-			if err == nil && metadata.Title != "" {
+			if err != nil {
+				h.app.Logger.Warn().Err(err).Str("url", rssURL).Msg("failed to fetch feed title, using URL")
+				title = rssURL
+			} else if metadata.Title != "" {
 				title = metadata.Title
 			} else {
 				title = rssURL
 			}
 		}
 
-		available = append(available, LeafletFeedResult{
+		available = append(available, LeafletSubscriptionView{
 			Publication: sub.Publication,
 			Title:       title,
 			RSSURL:      rssURL,
@@ -445,7 +454,29 @@ func (h *FeedHandler) FetchLeafletFeeds(w http.ResponseWriter, r *http.Request) 
 
 	// Render the results as HTML partial
 	w.Header().Set("Content-Type", "text/html")
-	h.renderLeafletResults(w, available, failed, alreadyImported)
+	h.renderLeafletSubscriptions(w, available, alreadyImported)
+}
+
+func (h *FeedHandler) renderLeafletSubscriptions(w http.ResponseWriter, subscriptions []LeafletSubscriptionView, alreadyImported int) {
+	tmpl, ok := h.app.Templates["import.tmpl"]
+	if !ok {
+		h.app.Logger.Error().Msg("import template not found")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Subscriptions   []LeafletSubscriptionView
+		AlreadyImported int
+	}{
+		Subscriptions:   subscriptions,
+		AlreadyImported: alreadyImported,
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "leaflet-subscriptions", data); err != nil {
+		h.app.Logger.Error().Err(err).Msg("render leaflet subscriptions")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (h *FeedHandler) renderLeafletResults(w http.ResponseWriter, available, failed []LeafletFeedResult, alreadyImported int) {
@@ -473,6 +504,7 @@ func (h *FeedHandler) renderLeafletResults(w http.ResponseWriter, available, fai
 }
 
 // ImportSelectedLeafletFeeds imports the selected Leaflet feeds.
+// RSS URLs are resolved here when the user submits the import form.
 func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
 	if session == nil {
@@ -485,8 +517,8 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 		return
 	}
 
-	feedURLs := r.Form["feeds"]
-	if len(feedURLs) == 0 {
+	publicationURIs := r.Form["publications"]
+	if len(publicationURIs) == 0 {
 		http.Redirect(w, r, "/feeds", http.StatusFound)
 		return
 	}
@@ -502,7 +534,14 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 	pdsClient := pds.NewClient(apiClient, session.DID)
 
 	imported := 0
-	for _, rssURL := range feedURLs {
+	for _, publicationURI := range publicationURIs {
+		// Resolve the RSS URL from the publication URI
+		rssURL, err := pdsClient.GetLeafletFeedRSSURL(r.Context(), publicationURI)
+		if err != nil {
+			h.app.Logger.Error().Err(err).Str("publication", publicationURI).Msg("resolve leaflet RSS URL")
+			continue
+		}
+
 		// Fetch feed metadata
 		metadata, err := h.app.FeedService.FetchMetadata(r.Context(), rssURL)
 		if err != nil {
@@ -527,7 +566,7 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 		imported++
 	}
 
-	h.app.Logger.Info().Int("imported", imported).Int("selected", len(feedURLs)).Msg("leaflet import complete")
+	h.app.Logger.Info().Int("imported", imported).Int("selected", len(publicationURIs)).Msg("leaflet import complete")
 	http.Redirect(w, r, "/feeds", http.StatusFound)
 }
 

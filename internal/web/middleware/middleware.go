@@ -125,7 +125,7 @@ func SecurityHeaders(isProduction bool) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Content Security Policy
 			csp := "default-src 'self'; " +
-				"script-src 'self' 'unsafe-inline' https://unpkg.com; " +
+				"script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; " +
 				"style-src 'self' 'unsafe-inline'; " +
 				"img-src 'self' data: https:; " +
 				"font-src 'self'; " +

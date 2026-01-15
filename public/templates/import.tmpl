@@ -1,5 +1,40 @@
 {{define "title"}}Import Feeds - Feeder{{end}}
 
+{{define "leaflet-subscriptions"}}
+{{if eq (len .Subscriptions) 0}}
+    {{if gt .AlreadyImported 0}}
+    <div class="empty">All {{.AlreadyImported}} Leaflet subscription(s) have already been imported!</div>
+    {{else}}
+    <div class="empty">No Leaflet subscriptions found in your account.</div>
+    {{end}}
+{{else}}
+<form action="/feeds/import/leaflet/import" method="POST">
+    <div class="select-actions">
+        <button type="button" onclick="selectAll()">Select All</button> | 
+        <button type="button" onclick="selectNone()">Select None</button>
+    </div>
+    <div class="import-list">
+        {{range .Subscriptions}}
+        <label class="import-item">
+            <input type="checkbox" class="import-checkbox" name="publications" value="{{.Publication}}">
+            <div class="import-item-info">
+                <div class="import-item-title">{{.Title}}</div>
+                <div class="import-item-url">{{.RSSURL}}</div>
+            </div>
+        </label>
+        {{end}}
+    </div>
+    {{if gt .AlreadyImported 0}}
+    <p style="color: var(--muted); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
+    {{end}}
+    <div class="import-actions">
+        <button type="submit" class="btn">Import Selected</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Cancel</button>
+    </div>
+</form>
+{{end}}
+{{end}}
+
 {{define "leaflet-results"}}
 {{if and (eq (len .Available) 0) (eq (len .Failed) 0)}}
 <div class="empty">All your Leaflet subscriptions have already been imported!</div>
@@ -61,8 +96,8 @@
         class="btn"
         hx-get="/feeds/import/leaflet/fetch"
         hx-target="#import-modal-content"
-        hx-trigger="click"
-        onclick="showImportModal()"
+        hx-swap="innerHTML"
+        onclick="document.getElementById('import-modal').classList.add('show')"
     >
         Fetch Leaflet Subscriptions
     </button>
@@ -191,16 +226,6 @@
 </style>
 
 <script>
-function showImportModal() {
-    // Reset to loading state and show modal
-    document.getElementById('import-modal-content').innerHTML = `
-        <div class="loading">
-            <div class="loading-spinner"></div>
-            <p>Fetching subscriptions...</p>
-        </div>
-    `;
-    document.getElementById('import-modal').classList.add('show');
-}
 function closeImportModal() {
     document.getElementById('import-modal').classList.remove('show');
 }
