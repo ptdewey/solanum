@@ -25,6 +25,9 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 		staticHandler.ServeHTTP(w, r)
 	})
 
+	// OAuth client metadata (required for public OAuth clients)
+	mux.HandleFunc("GET /client-metadata.json", authHandler.ClientMetadata)
+
 	// Auth routes
 	mux.HandleFunc("GET /login", authHandler.LoginPage)
 	mux.HandleFunc("POST /auth/login", authHandler.StartAuth)
