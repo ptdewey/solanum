@@ -9,7 +9,6 @@ import (
 	"html/template"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 
 const sessionCookieName = "solanum_session"
 
-const descLimit = 120
+const descLimit = 150
 
 // App holds application dependencies for handlers.
 type App struct {
@@ -214,6 +213,13 @@ func (h *FeedHandler) ListFeeds(w http.ResponseWriter, r *http.Request) {
 		h.app.Logger.Error().Err(err).Msg("list feeds")
 		http.Error(w, "Failed to load feeds", http.StatusInternalServerError)
 		return
+	}
+
+	// Truncate descriptions for display
+	for i := range feeds {
+		if len(feeds[i].Description) > descLimit {
+			feeds[i].Description = feeds[i].Description[:descLimit] + "..."
+		}
 	}
 
 	data := map[string]interface{}{
@@ -525,6 +531,122 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 	http.Redirect(w, r, "/feeds", http.StatusFound)
 }
 
+// RemoveEntry marks an entry as removed by adding it to the removed entries blob.
+func (h *FeedHandler) RemoveEntry(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	entryURL := strings.TrimSpace(r.FormValue("url"))
+	if entryURL == "" {
+		http.Error(w, "URL is required", http.StatusBadRequest)
+		return
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+
+	// Add URL to removed entries
+	if err := pdsClient.AddRemovedEntry(r.Context(), entryURL); err != nil {
+		h.app.Logger.Error().Err(err).Str("url", entryURL).Msg("add removed entry")
+		http.Error(w, "Failed to remove entry", http.StatusInternalServerError)
+		return
+	}
+
+	h.app.Logger.Info().Str("url", entryURL).Msg("Entry marked as removed")
+
+	// Return success response for HTMX
+	w.WriteHeader(http.StatusOK)
+}
+
+// MarkEntryAsRead marks an entry as read by creating an archived reading list item.
+func (h *FeedHandler) MarkEntryAsRead(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	entryURL := strings.TrimSpace(r.FormValue("url"))
+	title := strings.TrimSpace(r.FormValue("title"))
+	description := strings.TrimSpace(r.FormValue("description"))
+
+	if entryURL == "" {
+		http.Error(w, "URL is required", http.StatusBadRequest)
+		return
+	}
+
+	// If title is empty, fetch it from the page
+	if title == "" {
+		htmlMeta, err := h.app.FeedService.FetchHTMLMetadata(r.Context(), entryURL)
+		if err != nil {
+			h.app.Logger.Warn().Err(err).Str("url", entryURL).Msg("failed to fetch HTML metadata, using URL as title")
+			title = entryURL
+		} else {
+			title = htmlMeta.Title
+			if description == "" {
+				description = htmlMeta.Description
+			}
+		}
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+
+	// Create reading item that is immediately archived
+	now := time.Now().UTC()
+	item := &pds.ReadingItem{
+		URL:         entryURL,
+		Title:       title,
+		Description: description,
+		IsArchived:  true,
+		ArchivedAt:  &now,
+	}
+
+	_, _, err = pdsClient.CreateReadingItem(r.Context(), item)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("create archived reading item")
+		http.Error(w, "Failed to mark as read", http.StatusInternalServerError)
+		return
+	}
+
+	// Also add to removed entries
+	if err := pdsClient.AddRemovedEntry(r.Context(), entryURL); err != nil {
+		h.app.Logger.Warn().Err(err).Str("url", entryURL).Msg("failed to add to removed entries, but reading item was created")
+	}
+
+	h.app.Logger.Info().Str("url", entryURL).Msg("Entry marked as read and archived")
+
+	// Return success response for HTMX
+	w.WriteHeader(http.StatusOK)
+}
+
 // RefreshFeeds fetches all RSS feeds and updates the PDS blob cache.
 func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
@@ -565,6 +687,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 		h.app.Logger.Info().Str("url", feed.URL).Msg("fetching feed")
 
+		// Fetch feed items for the PDS blob cache
 		metadata, items, err := h.app.FeedService.FetchFeed(r.Context(), feed.URL)
 		if err != nil {
 			h.app.Logger.Error().Err(err).Str("url", feed.URL).Msg("fetch feed")
@@ -606,32 +729,59 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 	h.app.Logger.Info().Int("totalItems", len(allItems)).Msg("total items fetched from all feeds")
 
-	// Sort all items by published date (most recent first)
-	sort.Slice(allItems, func(i, j int) bool {
-		return allItems[i].Published.After(allItems[j].Published)
-	})
+	// Get removed URLs to filter them out before saving to cache
+	removedURLs, err := pdsClient.GetRemovedURLs(r.Context())
+	if err != nil {
+		h.app.Logger.Warn().Err(err).Msg("failed to get removed URLs, proceeding without filtering")
+		removedURLs = []string{}
+	}
 
-	// Limit to most recent 200 items total
-	if len(allItems) > 200 {
-		allItems = allItems[:200]
+	// Create a set of removed URLs for fast lookup
+	removedSet := make(map[string]bool)
+	for _, url := range removedURLs {
+		removedSet[url] = true
+	}
+
+	// Filter out removed entries BEFORE sorting and limiting
+	var filteredItems []pds.FeedCacheItem
+	for _, item := range allItems {
+		if !removedSet[item.Link] {
+			filteredItems = append(filteredItems, item)
+		}
 	}
 
 	h.app.Logger.Info().
-		Int("totalItems", len(allItems)).
+		Int("originalCount", len(allItems)).
+		Int("filteredCount", len(filteredItems)).
+		Int("removedCount", len(removedURLs)).
+		Msg("Filtered removed entries before caching")
+
+	// Sort filtered items by published date (most recent first)
+	sort.Slice(filteredItems, func(i, j int) bool {
+		return filteredItems[i].Published.After(filteredItems[j].Published)
+	})
+
+	// Limit to most recent 200 items total
+	if len(filteredItems) > 200 {
+		filteredItems = filteredItems[:200]
+	}
+
+	h.app.Logger.Info().
+		Int("totalItems", len(filteredItems)).
 		Int("feedsCount", len(feeds)).
 		Msg("PDS blob: populating cache with feed items")
 
 	// Create cache data JSON
 	cacheData := pds.FeedCacheData{
 		LastUpdated: time.Now().UTC(),
-		Items:       allItems,
+		Items:       filteredItems,
 	}
 
 	// Log first few items for debugging
-	if len(allItems) > 0 {
+	if len(filteredItems) > 0 {
 		h.app.Logger.Info().
-			Str("firstItemTitle", allItems[0].Title).
-			Str("firstItemFeed", allItems[0].FeedTitle).
+			Str("firstItemTitle", filteredItems[0].Title).
+			Str("firstItemFeed", filteredItems[0].FeedTitle).
 			Msg("sample item from cache")
 	}
 
@@ -645,7 +795,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 	// Upload blob to PDS
 	h.app.Logger.Info().
 		Int("blobSize", len(jsonData)).
-		Int("items", len(allItems)).
+		Int("items", len(filteredItems)).
 		Int("feeds", len(feeds)).
 		Msg("PDS blob: uploading feed cache to PDS")
 	// HACK: once pds json blob mimetype issue is fixed, swap to 'application/json'
@@ -666,7 +816,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 	cache := &pds.FeedCache{
 		Blob:        *blobRef,
 		LastUpdated: time.Now().UTC(),
-		ItemCount:   len(allItems),
+		ItemCount:   len(filteredItems),
 		FeedCount:   len(feeds),
 	}
 
@@ -685,7 +835,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 	h.app.Logger.Info().
 		Str("recordCID", cid).
-		Int("items", len(allItems)).
+		Int("items", len(filteredItems)).
 		Int("feeds", len(feeds)).
 		Msg("feed cache record created successfully")
 
@@ -779,12 +929,39 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 			Msg("Sample item from PDS blob cache")
 	}
 
+	// Filter out removed entries
+	removedURLs, err := pdsClient.GetRemovedURLs(r.Context())
+	if err != nil {
+		h.app.Logger.Warn().Err(err).Msg("failed to get removed URLs, proceeding without filtering")
+		removedURLs = []string{}
+	}
+
+	// Create a set of removed URLs for fast lookup
+	removedSet := make(map[string]bool)
+	for _, url := range removedURLs {
+		removedSet[url] = true
+	}
+
+	// Filter items
+	filteredItems := make([]pds.FeedCacheItem, 0, len(cacheData.Items))
+	for _, item := range cacheData.Items {
+		if !removedSet[item.Link] {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+
+	h.app.Logger.Info().
+		Int("originalCount", len(cacheData.Items)).
+		Int("filteredCount", len(filteredItems)).
+		Int("removedCount", len(removedURLs)).
+		Msg("Filtered removed entries from cache")
+
 	// Return cache data
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"exists":      true,
 		"lastUpdated": cacheData.LastUpdated,
-		"items":       cacheData.Items,
+		"items":       filteredItems,
 	})
 }
 
@@ -1116,17 +1293,6 @@ func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
-	query := r.URL.Query()
-	search := query.Get("q")
-	pageStr := query.Get("page")
-	page := 1
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
 	// Get user's feeds
 	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
 	if err != nil {
@@ -1144,76 +1310,9 @@ func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create feed URL to title map
-	feedTitleMap := make(map[string]string)
-	feedURLs := make([]string, 0, len(feeds))
-	for _, f := range feeds {
-		if f.IsActive {
-			feedURLs = append(feedURLs, f.URL)
-			feedTitleMap[f.URL] = f.Title
-		}
-	}
-
-	// Get total count for pagination
-	totalItems, err := h.app.FeedService.CountItems(r.Context(), feedURLs, search)
-	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("count items")
-		totalItems = 0
-	}
-
-	totalPages := (totalItems + itemsPerPage - 1) / itemsPerPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-
-	offset := (page - 1) * itemsPerPage
-
-	// Get paginated items from cache
-	items, err := h.app.FeedService.GetRecentItemsPaginated(r.Context(), feedURLs, search, itemsPerPage, offset)
-	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("get recent items")
-		items = nil
-	}
-
-	h.app.Logger.Info().
-		Int("itemsRetrieved", len(items)).
-		Int("feedCount", len(feedURLs)).
-		Str("source", "local_cache").
-		Msg("Loaded feed items from local cache")
-
-	// Convert to view models with feed titles
-	itemViews := make([]FeedItemView, len(items))
-	for i, item := range items {
-		feedTitle := feedTitleMap[item.FeedURL]
-		if feedTitle == "" {
-			feedTitle = item.FeedURL
-		}
-		itemViews[i] = FeedItemView{
-			FeedTitle:   feedTitle,
-			Title:       item.Title,
-			Description: item.Description,
-			Link:        item.Link,
-			Author:      item.Author,
-			Published:   item.Published,
-		}
-	}
-
 	data := map[string]interface{}{
-		"Session":     session,
-		"Feeds":       feeds,
-		"Items":       itemViews,
-		"Search":      search,
-		"Page":        page,
-		"TotalPages":  totalPages,
-		"TotalItems":  totalItems,
-		"HasPrevPage": page > 1,
-		"HasNextPage": page < totalPages,
-		"PrevPage":    page - 1,
-		"NextPage":    page + 1,
-		"BasePath":    "/",
+		"Session": session,
+		"Feeds":   feeds,
 	}
 
 	tmpl, ok := h.app.Templates["home.tmpl"]
@@ -1223,13 +1322,7 @@ func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For htmx requests, only render the results partial
-	templateName := "base"
-	if r.Header.Get("HX-Request") == "true" {
-		templateName = "results"
-	}
-
-	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		h.app.Logger.Error().Err(err).Msg("render home page")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -1247,17 +1340,6 @@ func (h *HomeHandler) FeedView(w http.ResponseWriter, r *http.Request) {
 	if feedRKey == "" {
 		http.Error(w, "Feed not found", http.StatusNotFound)
 		return
-	}
-
-	// Parse query parameters
-	query := r.URL.Query()
-	search := query.Get("q")
-	pageStr := query.Get("page")
-	page := 1
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
 	}
 
 	// Get user's feeds
@@ -1279,9 +1361,9 @@ func (h *HomeHandler) FeedView(w http.ResponseWriter, r *http.Request) {
 
 	// Find the specific feed
 	var currentFeed *pds.Feed
-	for _, f := range feeds {
-		if f.RKey == feedRKey {
-			currentFeed = &f
+	for i := range feeds {
+		if feeds[i].RKey == feedRKey {
+			currentFeed = &feeds[i]
 			break
 		}
 	}
@@ -1291,59 +1373,10 @@ func (h *HomeHandler) FeedView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	feedURLs := []string{currentFeed.URL}
-
-	// Get total count for pagination
-	totalItems, err := h.app.FeedService.CountItems(r.Context(), feedURLs, search)
-	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("count items")
-		totalItems = 0
-	}
-
-	totalPages := (totalItems + itemsPerPage - 1) / itemsPerPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-
-	offset := (page - 1) * itemsPerPage
-
-	// Get paginated items from cache
-	items, err := h.app.FeedService.GetRecentItemsPaginated(r.Context(), feedURLs, search, itemsPerPage, offset)
-	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("get feed items")
-		items = nil
-	}
-
-	// Convert to view models with feed title
-	itemViews := make([]FeedItemView, len(items))
-	for i, item := range items {
-		itemViews[i] = FeedItemView{
-			FeedTitle:   currentFeed.Title,
-			Title:       item.Title,
-			Description: item.Description,
-			Link:        item.Link,
-			Author:      item.Author,
-			Published:   item.Published,
-		}
-	}
-
 	data := map[string]interface{}{
 		"Session":     session,
 		"Feeds":       feeds,
-		"Items":       itemViews,
 		"CurrentFeed": currentFeed,
-		"Search":      search,
-		"Page":        page,
-		"TotalPages":  totalPages,
-		"TotalItems":  totalItems,
-		"HasPrevPage": page > 1,
-		"HasNextPage": page < totalPages,
-		"PrevPage":    page - 1,
-		"NextPage":    page + 1,
-		"BasePath":    "/feeds/" + feedRKey + "/view",
 	}
 
 	tmpl, ok := h.app.Templates["home.tmpl"]
@@ -1353,13 +1386,7 @@ func (h *HomeHandler) FeedView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For htmx requests, only render the results partial
-	templateName := "base"
-	if r.Header.Get("HX-Request") == "true" {
-		templateName = "results"
-	}
-
-	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		h.app.Logger.Error().Err(err).Msg("render feed view page")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

@@ -12,6 +12,7 @@ const (
 	FeedNSID            = "net.solanaceae.solanum.feed"
 	ReadingItemNSID     = "net.solanaceae.solanum.readingItem"
 	FeedCacheNSID       = "net.solanaceae.solanum.feedCache"
+	RemovedEntriesNSID  = "net.solanaceae.solanum.removedEntries"
 	LeafletSubscription = "pub.leaflet.graph.subscription"
 )
 
@@ -189,4 +190,39 @@ type FeedCacheItem struct {
 	Author      string    `json:"author,omitempty"`
 	Published   time.Time `json:"published"`
 	Content     string    `json:"content,omitempty"`
+}
+
+// RemovedEntries represents the list of removed feed entries stored as a blob.
+// Corresponds to lexicon: net.solanaceae.solanum.removedEntries
+type RemovedEntries struct {
+	URI         string    `json:"uri,omitempty"`  // AT URI
+	CID         string    `json:"cid,omitempty"`  // Content ID
+	RKey        string    `json:"rkey,omitempty"` // Record key (always "self")
+	Blob        BlobRef   `json:"blob"`           // Blob reference
+	LastUpdated time.Time `json:"lastUpdated"`    // When list was last updated
+	EntryCount  int       `json:"entryCount"`     // Number of removed entries
+}
+
+// RemovedEntriesRecord is the record format for PDS storage.
+type RemovedEntriesRecord struct {
+	Type        string  `json:"$type"`
+	Blob        BlobRef `json:"blob"`
+	LastUpdated string  `json:"lastUpdated"`
+	EntryCount  int     `json:"entryCount"`
+}
+
+// ToRecord converts RemovedEntries to its PDS record format.
+func (re *RemovedEntries) ToRecord() RemovedEntriesRecord {
+	return RemovedEntriesRecord{
+		Type:        RemovedEntriesNSID,
+		Blob:        re.Blob,
+		LastUpdated: re.LastUpdated.Format(time.RFC3339),
+		EntryCount:  re.EntryCount,
+	}
+}
+
+// RemovedEntriesData is the JSON structure stored in the blob.
+type RemovedEntriesData struct {
+	LastUpdated time.Time `json:"lastUpdated"`
+	URLs        []string  `json:"urls"` // List of removed entry URLs
 }

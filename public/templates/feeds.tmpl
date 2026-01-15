@@ -1,22 +1,6 @@
 {{define "title"}}Feeds - Solanum{{end}}
 
 {{define "content"}}
-<style>
-.card-actions .btn {
-    min-width: 100px;
-    text-align: center;
-    padding: 0.5rem 1rem;
-    box-sizing: border-box;
-}
-
-.page-actions .btn {
-    min-width: 120px;
-    text-align: center;
-    padding: 0.5rem 1rem;
-    box-sizing: border-box;
-}
-</style>
-
 <h1>Your Feeds</h1>
 <p class="page-actions">
     <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">Add Feed</button>
@@ -41,23 +25,31 @@
     </div>
 </div>
 
+<style>
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    height: auto;
+    line-height: 1.2;
+}
+</style>
+
 {{if .Feeds}}
     {{range .Feeds}}
     <div class="card">
-        <h3 class="card-title">
-            <a href="/feeds/{{.RKey}}/view">{{.Title}}</a>
-        </h3>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+            <h3 class="card-title" style="margin: 0; flex: 1;">
+                <a href="/feeds/{{.RKey}}/view">{{.Title}}</a>
+            </h3>
+            <form action="/feeds/{{.RKey}}/delete" method="POST" style="display:inline" 
+                  onsubmit="return confirm('Delete this feed?')">
+                <button type="submit" class="btn btn-danger btn-sm" title="Delete feed">✕</button>
+            </form>
+        </div>
         <div class="card-meta">{{.URL}}</div>
         {{if .Description}}
         <p>{{.Description}}</p>
         {{end}}
-        <div class="card-actions">
-            <a href="/feeds/{{.RKey}}/view" class="btn btn-secondary">View Posts</a>
-            <form action="/feeds/{{.RKey}}/delete" method="POST" style="display:inline" 
-                  onsubmit="return confirm('Delete this feed?')">
-                <button type="submit" class="btn btn-danger">Delete</button>
-            </form>
-        </div>
     </div>
     {{end}}
 {{else}}

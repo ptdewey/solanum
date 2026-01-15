@@ -70,6 +70,15 @@
     font-weight: 500;
 }
 
+.feed-badge a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.feed-badge a:hover {
+    text-decoration: underline;
+}
+
 .card p {
     margin: 0.25rem 0 0 0;
 }
@@ -96,6 +105,33 @@
     display: inline-block;
     animation: spin 1s linear infinite;
 }
+
+.entry-actions {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    height: auto;
+    line-height: 1.2;
+}
+
+.card.removing {
+    opacity: 0.5;
+    transition: opacity 0.3s ease-out;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.95); }
+}
+
+.card.fade-out {
+    animation: fadeOut 0.3s ease-out forwards;
+}
 </style>
 
 <script>
@@ -104,6 +140,18 @@ let filteredItems = [];
 let currentPage = 1;
 const itemsPerPage = 25;
 let searchQuery = '';
+{{if .CurrentFeed}}
+const filterFeedURL = "{{.CurrentFeed.URL}}";
+{{else}}
+const filterFeedURL = null;
+{{end}}
+
+// Create a mapping from feed URL to feed RKey for linking
+const feedURLToRKey = {
+{{range .Feeds}}
+    "{{.URL}}": "{{.RKey}}",
+{{end}}
+};
 
 // Load cache on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -257,16 +305,22 @@ function clearSearch() {
 }
 
 function applyFiltersAndRender() {
+    // Filter items based on feed URL (if viewing a single feed)
+    let items = allItems;
+    if (filterFeedURL) {
+        items = items.filter(item => item.feedURL === filterFeedURL);
+    }
+    
     // Filter items based on search
     if (searchQuery) {
-        filteredItems = allItems.filter(item => {
+        filteredItems = items.filter(item => {
             return item.title.toLowerCase().includes(searchQuery) ||
                    (item.description && item.description.toLowerCase().includes(searchQuery)) ||
                    (item.author && item.author.toLowerCase().includes(searchQuery)) ||
                    item.feedTitle.toLowerCase().includes(searchQuery);
         });
     } else {
-        filteredItems = allItems;
+        filteredItems = items;
     }
     
     renderItems();
@@ -306,16 +360,34 @@ function renderItems() {
         const date = new Date(item.published);
         const formattedDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         
+        // Get feed RKey for linking
+        const feedRKey = feedURLToRKey[item.feedURL];
+        const feedLink = feedRKey ? `/feeds/${escapeHtml(feedRKey)}/view` : '#';
+        
         html += `
-        <div class="card">
+        <div class="card" id="entry-${escapeHtml(item.link).replace(/[^a-zA-Z0-9]/g, '_')}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                <span class="feed-badge">${escapeHtml(item.feedTitle)}</span>
-                <form action="/reading-list" method="POST" style="display:inline; margin: 0;">
-                    <input type="hidden" name="url" value="${escapeHtml(item.link)}">
-                    <input type="hidden" name="title" value="${escapeHtml(item.title)}">
-                    <input type="hidden" name="description" value="${escapeHtml(item.description || '')}">
-                    <button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;">Save for Later</button>
-                </form>
+                <span class="feed-badge"><a href="${feedLink}">${escapeHtml(item.feedTitle)}</a></span>
+                <div class="entry-actions">
+                    <button 
+                        class="btn btn-secondary btn-sm"
+                        onclick="markAsRead('${escapeHtml(item.link).replace(/'/g, "\\'")}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', '${escapeHtml(item.description || '').replace(/'/g, "\\'")}')"
+                        title="Mark as read">
+                        ✓ Read
+                    </button>
+                    <button 
+                        class="btn btn-secondary btn-sm"
+                        onclick="saveForLater('${escapeHtml(item.link).replace(/'/g, "\\'")}', '${escapeHtml(item.title).replace(/'/g, "\\'")}', '${escapeHtml(item.description || '').replace(/'/g, "\\'")}')"
+                        title="Save for later">
+                        📑 Save
+                    </button>
+                    <button 
+                        class="btn btn-danger btn-sm"
+                        onclick="removeEntry('${escapeHtml(item.link).replace(/'/g, "\\'")}')"
+                        title="Remove from feed">
+                        ✕
+                    </button>
+                </div>
             </div>
             <h3 class="card-title">
                 <a href="${escapeHtml(item.link)}" target="_blank">${escapeHtml(item.title)}</a>
@@ -375,6 +447,142 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+async function removeEntry(url) {
+    if (!confirm('Remove this entry from your feed?')) {
+        return;
+    }
+    
+    const cardId = 'entry-' + url.replace(/[^a-zA-Z0-9]/g, '_');
+    const card = document.getElementById(cardId);
+    
+    if (card) {
+        card.classList.add('removing');
+    }
+    
+    try {
+        const response = await fetch('/entries/remove', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `url=${encodeURIComponent(url)}`
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to remove entry');
+        }
+        
+        // Remove from local data
+        allItems = allItems.filter(item => item.link !== url);
+        
+        // Update localStorage
+        const cachedData = localStorage.getItem('feedCacheData');
+        if (cachedData) {
+            const data = JSON.parse(cachedData);
+            data.items = data.items.filter(item => item.link !== url);
+            localStorage.setItem('feedCacheData', JSON.stringify(data));
+        }
+        
+        // Animate removal and re-render
+        if (card) {
+            card.classList.add('fade-out');
+            setTimeout(() => {
+                applyFiltersAndRender();
+            }, 300);
+        } else {
+            applyFiltersAndRender();
+        }
+    } catch (error) {
+        console.error('Error removing entry:', error);
+        alert('Failed to remove entry. Please try again.');
+        if (card) {
+            card.classList.remove('removing');
+        }
+    }
+}
+
+async function markAsRead(url, title, description) {
+    const cardId = 'entry-' + url.replace(/[^a-zA-Z0-9]/g, '_');
+    const card = document.getElementById(cardId);
+    
+    if (card) {
+        card.classList.add('removing');
+    }
+    
+    try {
+        const response = await fetch('/entries/mark-read', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to mark as read');
+        }
+        
+        // Remove from local data (marked as read entries are filtered out)
+        allItems = allItems.filter(item => item.link !== url);
+        
+        // Update localStorage
+        const cachedData = localStorage.getItem('feedCacheData');
+        if (cachedData) {
+            const data = JSON.parse(cachedData);
+            data.items = data.items.filter(item => item.link !== url);
+            localStorage.setItem('feedCacheData', JSON.stringify(data));
+        }
+        
+        // Animate removal and re-render
+        if (card) {
+            card.classList.add('fade-out');
+            setTimeout(() => {
+                applyFiltersAndRender();
+            }, 300);
+        } else {
+            applyFiltersAndRender();
+        }
+    } catch (error) {
+        console.error('Error marking as read:', error);
+        alert('Failed to mark as read. Please try again.');
+        if (card) {
+            card.classList.remove('removing');
+        }
+    }
+}
+
+async function saveForLater(url, title, description) {
+    try {
+        const response = await fetch('/reading-list', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save for later');
+        }
+        
+        // Show success message
+        const cardId = 'entry-' + url.replace(/[^a-zA-Z0-9]/g, '_');
+        const card = document.getElementById(cardId);
+        if (card) {
+            const originalContent = card.style.borderColor;
+            card.style.borderColor = '#4da6ff';
+            setTimeout(() => {
+                card.style.borderColor = originalContent;
+            }, 1000);
+        }
+        
+        alert('Saved to reading list!');
+    } catch (error) {
+        console.error('Error saving for later:', error);
+        alert('Failed to save to reading list. Please try again.');
+    }
 }
 </script>
 {{end}}

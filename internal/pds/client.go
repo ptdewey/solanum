@@ -374,6 +374,136 @@ func (c *Client) DeleteFeedCache(ctx context.Context) error {
 	return c.deleteRecord(ctx, FeedCacheNSID, "self")
 }
 
+// GetRemovedEntries retrieves the removed entries record.
+func (c *Client) GetRemovedEntries(ctx context.Context) (*RemovedEntries, error) {
+	rec, err := c.getRecord(ctx, RemovedEntriesNSID, "self")
+	if err != nil {
+		return nil, err
+	}
+
+	var removed RemovedEntries
+	if err := json.Unmarshal(rec.Value, &removed); err != nil {
+		return nil, fmt.Errorf("unmarshal removed entries: %w", err)
+	}
+	removed.URI = rec.URI
+	removed.CID = rec.CID
+	removed.RKey = "self"
+	return &removed, nil
+}
+
+// CreateRemovedEntries creates or updates the removed entries record.
+// Uses putRecord to upsert with the literal "self" rkey.
+func (c *Client) CreateRemovedEntries(ctx context.Context, removed *RemovedEntries) (string, error) {
+	removed.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, RemovedEntriesNSID, "self", removed.ToRecord())
+}
+
+// UpdateRemovedEntries updates the removed entries record.
+func (c *Client) UpdateRemovedEntries(ctx context.Context, removed *RemovedEntries) (string, error) {
+	removed.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, RemovedEntriesNSID, "self", removed.ToRecord())
+}
+
+// DeleteRemovedEntries removes the removed entries record.
+func (c *Client) DeleteRemovedEntries(ctx context.Context) error {
+	return c.deleteRecord(ctx, RemovedEntriesNSID, "self")
+}
+
+// AddRemovedEntry adds a URL to the removed entries list.
+func (c *Client) AddRemovedEntry(ctx context.Context, url string) error {
+	// Try to get existing removed entries
+	removed, err := c.GetRemovedEntries(ctx)
+	if err != nil {
+		// If doesn't exist, create new one with empty blob
+		removedData := RemovedEntriesData{
+			LastUpdated: time.Now().UTC(),
+			URLs:        []string{url},
+		}
+
+		jsonData, err := json.Marshal(removedData)
+		if err != nil {
+			return fmt.Errorf("marshal removed entries data: %w", err)
+		}
+
+		blobRef, err := c.UploadBlob(ctx, jsonData, "text/plain")
+		if err != nil {
+			return fmt.Errorf("upload blob: %w", err)
+		}
+
+		removed = &RemovedEntries{
+			Blob:        *blobRef,
+			LastUpdated: time.Now().UTC(),
+			EntryCount:  1,
+		}
+
+		_, err = c.CreateRemovedEntries(ctx, removed)
+		return err
+	}
+
+	// Download existing blob
+	blobData, _, err := c.GetBlob(ctx, removed.Blob.Ref.Link)
+	if err != nil {
+		return fmt.Errorf("get blob: %w", err)
+	}
+
+	// Parse existing data
+	var removedData RemovedEntriesData
+	if err := json.Unmarshal(blobData, &removedData); err != nil {
+		return fmt.Errorf("unmarshal removed entries data: %w", err)
+	}
+
+	// Check if URL already exists
+	for _, existingURL := range removedData.URLs {
+		if existingURL == url {
+			return nil // Already removed
+		}
+	}
+
+	// Add new URL
+	removedData.URLs = append(removedData.URLs, url)
+	removedData.LastUpdated = time.Now().UTC()
+
+	// Upload updated blob
+	jsonData, err := json.Marshal(removedData)
+	if err != nil {
+		return fmt.Errorf("marshal removed entries data: %w", err)
+	}
+
+	blobRef, err := c.UploadBlob(ctx, jsonData, "text/plain")
+	if err != nil {
+		return fmt.Errorf("upload blob: %w", err)
+	}
+
+	// Update record
+	removed.Blob = *blobRef
+	removed.EntryCount = len(removedData.URLs)
+	_, err = c.UpdateRemovedEntries(ctx, removed)
+	return err
+}
+
+// GetRemovedURLs retrieves the list of removed URLs from the blob.
+func (c *Client) GetRemovedURLs(ctx context.Context) ([]string, error) {
+	removed, err := c.GetRemovedEntries(ctx)
+	if err != nil {
+		// If record doesn't exist, return empty list
+		return []string{}, nil
+	}
+
+	// Download blob
+	blobData, _, err := c.GetBlob(ctx, removed.Blob.Ref.Link)
+	if err != nil {
+		return nil, fmt.Errorf("get blob: %w", err)
+	}
+
+	// Parse data
+	var removedData RemovedEntriesData
+	if err := json.Unmarshal(blobData, &removedData); err != nil {
+		return nil, fmt.Errorf("unmarshal removed entries data: %w", err)
+	}
+
+	return removedData.URLs, nil
+}
+
 // Record represents a generic PDS record response.
 type record struct {
 	URI   string          `json:"uri"`

@@ -1,2 +1,14 @@
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+.env
+env.sh
 /solanum
 *.db*
+result

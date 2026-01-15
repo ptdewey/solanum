@@ -1,13 +1,17 @@
 {{define "title"}}Reading List - Feeder{{end}}
 
 {{define "content"}}
-<h1>Reading List</h1>
-
-<p>
-    <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">
-        Add Link
-    </button>
-</p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <h1 style="margin: 0;">Reading List</h1>
+    <div>
+        <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">
+            Add Link
+        </button>
+        {{if .HasArchived}}
+        <a href="/reading-list/archive" class="btn btn-secondary">View Archive</a>
+        {{end}}
+    </div>
+</div>
 
 <!-- Modal for adding links -->
 <div id="add-modal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
@@ -35,7 +39,6 @@
     </div>
 </div>
 
-<h2>Your Reading List</h2>
 {{if .Active}}
     {{range .Active}}
     <div class="card">
@@ -54,11 +57,8 @@
     {{end}}
 {{else}}
     <div class="empty">
-        <p>No items in your reading list yet. Add one above!</p>
+        <p>No items in your reading list yet.</p>
     </div>
 {{end}}
 
-{{if .HasArchived}}
-<p style="margin-top: 2rem;"><a href="/reading-list/archive" class="btn btn-secondary">View Archive</a></p>
-{{end}}
 {{end}}

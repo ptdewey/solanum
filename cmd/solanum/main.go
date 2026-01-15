@@ -25,6 +25,7 @@ var scopes = []string{
 	"repo:net.solanaceae.solanum.feedCache",
 	"repo:net.solanaceae.solanum.feed",
 	"repo:net.solanaceae.solanum.readingItem",
+	"repo:net.solanaceae.solanum.removedEntries",
 	// HACK: this should be 'application/json' once mime type issue is fixed.
 	// (PDS shows metadata for blob instead of blob contents with json mimetype)
 	"blob:text/plain",
@@ -71,14 +72,9 @@ func main() {
 		logger.Fatal().Err(err).Msg("init user session store")
 	}
 
-	feedCache, err := feed.NewCache(db)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("init feed cache")
-	}
-
 	oauthService := auth.NewOAuthService(*clientID, *callbackURL, scopes, authStore)
 
-	feedService := feed.NewService(feedCache)
+	feedService := feed.NewService()
 
 	baseTemplate, err := template.ParseFS(public.TemplatesFS, "templates/base.tmpl")
 	if err != nil {
@@ -140,6 +136,11 @@ func main() {
 	mux.HandleFunc("GET /feeds/cache", feedHandler.GetFeedCache)
 	mux.HandleFunc("GET /feeds/cache/debug", feedHandler.DebugFeedCache)
 	mux.HandleFunc("POST /feeds/{rkey}/delete", feedHandler.DeleteFeed)
+	mux.HandleFunc("GET /feeds/{rkey}/view", homeHandler.FeedView)
+
+	// Protected routes - Feed Entry Actions
+	mux.HandleFunc("POST /entries/remove", feedHandler.RemoveEntry)
+	mux.HandleFunc("POST /entries/mark-read", feedHandler.MarkEntryAsRead)
 
 	// Protected routes - Reading List
 	mux.HandleFunc("GET /reading-list", readingListHandler.ListItems)
@@ -182,9 +183,6 @@ func main() {
 				}
 				if err := userSessions.CleanupExpiredSessions(ctx); err != nil {
 					logger.Error().Err(err).Msg("cleanup expired user sessions")
-				}
-				if err := feedCache.CleanupOldItems(ctx, 30*24*time.Hour); err != nil {
-					logger.Error().Err(err).Msg("cleanup old feed items")
 				}
 			case <-ctx.Done():
 				return
