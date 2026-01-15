@@ -77,6 +77,14 @@ func main() {
 	// e.g., SERVER_PUBLIC_URL=https://solanum.example.com when behind a reverse proxy
 	publicURL := os.Getenv("SERVER_PUBLIC_URL")
 
+	// Determine if we should use secure cookies based on the public URL scheme
+	// If the public URL uses https://, enable secure cookies
+	// Otherwise (http:// or no public URL), disable secure cookies for development
+	secureCookies := false
+	if publicURL != "" && len(publicURL) >= 8 && publicURL[:8] == "https://" {
+		secureCookies = true
+	}
+
 	// Initialize SQLite database
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -167,10 +175,6 @@ func main() {
 		}
 		templates[page] = tmpl
 	}
-
-	// Determine if we should use secure cookies (default: false for development)
-	// Set SECURE_COOKIES=true in production with HTTPS
-	secureCookies := os.Getenv("SECURE_COOKIES") == "true"
 
 	// Create app with dependencies
 	app := &handlers.App{

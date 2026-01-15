@@ -4,7 +4,7 @@ buildGoModule {
   pname = "solanum";
   version = "0.1.0";
   src = ./.;
-  vendorHash = "sha256-FlxtNVM28QB09dgL7VJLU3gJs5wA02EajQ1jWZmZLhs=";
+  vendorHash = "sha256-hhJFOBNUx5Y/NukZ/5VNmbFGXL7fd50v0e1kVk0yRQM=";
 
   # nativeBuildInputs = [ tailwindcss_4 ];
   # preBuild = ''
