@@ -196,7 +196,7 @@ func main() {
 	// Apply middleware
 	handler := middleware.Chain(
 		middleware.Recover(log.Logger),
-		middleware.Logger(log.Logger),
+		middleware.LoggingMiddleware(log.Logger),
 		middleware.SecurityHeaders(secureCookies),
 		middleware.CSRF(csrfOrigin),
 		middleware.Auth(userSessions),

@@ -3,45 +3,11 @@ package middleware
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/patricktcoakley/solanum/internal/auth"
 	"github.com/patricktcoakley/solanum/internal/web/handlers"
 	"github.com/rs/zerolog"
 )
-
-// Logger creates a logging middleware.
-func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-
-			// Wrap response writer to capture status code
-			ww := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-
-			next.ServeHTTP(ww, r)
-
-			logger.Info().
-				Str("method", r.Method).
-				Str("path", r.URL.Path).
-				Int("status", ww.status).
-				Dur("duration", time.Since(start)).
-				Str("remote", r.RemoteAddr).
-				Str("user_agent", r.UserAgent()).
-				Msg("request")
-		})
-	}
-}
-
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *responseWriter) WriteHeader(status int) {
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
-}
 
 // Auth creates authentication middleware that loads the user session.
 func Auth(sessions *auth.UserSessionStore) func(http.Handler) http.Handler {

@@ -59,24 +59,9 @@ func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	// Check if already logged in
 	session := getSession(r.Context())
 	if session != nil {
-		h.app.Logger.Info().
-			Str("did", session.DID.String()).
-			Msg("User already logged in, redirecting to home")
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-
-	// Log cookie status for debugging
-	cookie, err := r.Cookie(sessionCookieName)
-	h.app.Logger.Info().
-		Bool("has_cookie", err == nil).
-		Str("cookie_value", func() string {
-			if err == nil {
-				return cookie.Value[:min(10, len(cookie.Value))] + "..."
-			}
-			return "none"
-		}()).
-		Msg("Login page accessed")
 
 	tmpl, ok := h.app.Templates["login.tmpl"]
 	if !ok {
@@ -119,14 +104,6 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	iss := r.URL.Query().Get("iss")
 
-	h.app.Logger.Info().
-		Str("state", state).
-		Str("iss", iss).
-		Bool("has_code", code != "").
-		Str("remote_addr", r.RemoteAddr).
-		Str("referer", r.Referer()).
-		Msg("OAuth callback received")
-
 	// Check for error response from auth server
 	if errCode := r.URL.Query().Get("error"); errCode != "" {
 		errDesc := r.URL.Query().Get("error_description")
@@ -151,11 +128,6 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
 		return
 	}
-
-	h.app.Logger.Info().
-		Str("did", sessData.AccountDID.String()).
-		Str("session_id", sessData.SessionID).
-		Msg("OAuth session created successfully")
 
 	// Session fixation protection: delete any existing session before creating new one
 	if existingCookie, err := r.Cookie(sessionCookieName); err == nil {
@@ -193,11 +165,6 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	// Set session cookie
 	// Note: SameSite=Lax works for OAuth callback redirects (which are GET requests)
-	h.app.Logger.Info().
-		Str("cookieID", cookieID).
-		Bool("secure", h.app.IsProduction).
-		Msg("Setting session cookie")
-
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    cookieID,
@@ -208,12 +175,11 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	})
 
-	http.Redirect(w, r, "/", http.StatusFound)
-
 	h.app.Logger.Info().
 		Str("did", sessData.AccountDID.String()).
-		Str("cookie_id", cookieID).
-		Msg("Login successful, redirecting to home")
+		Msg("User logged in successfully")
+
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // Logout logs the user out.
@@ -579,9 +545,10 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 		return
 	}
 
-	publicationURIs := r.Form["publications"]
+	// Get the selected publication URIs from the form
+	publicationURIs := r.Form["publication"]
 	if len(publicationURIs) == 0 {
-		http.Redirect(w, r, "/feeds", http.StatusFound)
+		http.Error(w, "No feeds selected", http.StatusBadRequest)
 		return
 	}
 
@@ -668,8 +635,6 @@ func (h *FeedHandler) RemoveEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.app.Logger.Info().Str("url", entryURL).Msg("Entry marked as removed")
-
 	// Return success response for HTMX
 	w.WriteHeader(http.StatusOK)
 }
@@ -739,8 +704,6 @@ func (h *FeedHandler) MarkEntryAsRead(w http.ResponseWriter, r *http.Request) {
 		h.app.Logger.Warn().Err(err).Str("url", entryURL).Msg("failed to add to removed entries, but item was archived")
 	}
 
-	h.app.Logger.Info().Str("url", entryURL).Msg("Entry marked as read and archived")
-
 	// Return success response for HTMX
 	w.WriteHeader(http.StatusOK)
 }
@@ -768,11 +731,6 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Debug: Log the scopes from the session data
-	h.app.Logger.Info().
-		Strs("scopes", oauthSess.Data.Scopes).
-		Msg("OAuth session scopes")
-
 	apiClient := oauthSess.APIClient()
 	pdsClient := pds.NewClient(apiClient, session.DID)
 
@@ -791,19 +749,12 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		h.app.Logger.Info().Str("url", feed.URL).Msg("fetching feed")
-
 		// Fetch feed items for the PDS blob cache
 		metadata, items, err := h.app.FeedService.FetchFeed(r.Context(), feed.URL)
 		if err != nil {
 			h.app.Logger.Error().Err(err).Str("url", feed.URL).Msg("fetch feed")
 			continue
 		}
-
-		h.app.Logger.Info().
-			Str("url", feed.URL).
-			Int("itemCount", len(items)).
-			Msg("fetched feed items")
 
 		// Use feed title from metadata if available, otherwise use stored title
 		feedTitle := feed.Title
@@ -833,8 +784,6 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.app.Logger.Info().Int("totalItems", len(allItems)).Msg("total items fetched from all feeds")
-
 	// Get removed URLs to filter them out before saving to cache
 	removedURLs, err := pdsClient.GetRemovedURLs(r.Context())
 	if err != nil {
@@ -856,12 +805,6 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.app.Logger.Info().
-		Int("originalCount", len(allItems)).
-		Int("filteredCount", len(filteredItems)).
-		Int("removedCount", len(removedURLs)).
-		Msg("Filtered removed entries before caching")
-
 	// Sort filtered items by published date (most recent first)
 	sort.Slice(filteredItems, func(i, j int) bool {
 		return filteredItems[i].Published.After(filteredItems[j].Published)
@@ -872,23 +815,10 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		filteredItems = filteredItems[:200]
 	}
 
-	h.app.Logger.Info().
-		Int("totalItems", len(filteredItems)).
-		Int("feedsCount", len(feeds)).
-		Msg("PDS blob: populating cache with feed items")
-
 	// Create cache data JSON
 	cacheData := pds.FeedCacheData{
 		LastUpdated: time.Now().UTC(),
 		Items:       filteredItems,
-	}
-
-	// Log first few items for debugging
-	if len(filteredItems) > 0 {
-		h.app.Logger.Info().
-			Str("firstItemTitle", filteredItems[0].Title).
-			Str("firstItemFeed", filteredItems[0].FeedTitle).
-			Msg("sample item from cache")
 	}
 
 	jsonData, err := json.Marshal(cacheData)
@@ -899,11 +829,6 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upload blob to PDS
-	h.app.Logger.Info().
-		Int("blobSize", len(jsonData)).
-		Int("items", len(filteredItems)).
-		Int("feeds", len(feeds)).
-		Msg("PDS blob: uploading feed cache to PDS")
 	// HACK: once pds json blob mimetype issue is fixed, swap to 'application/json'
 	blobRef, err := pdsClient.UploadBlob(r.Context(), jsonData, "text/plain")
 	if err != nil {
@@ -911,12 +836,6 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to upload cache", http.StatusInternalServerError)
 		return
 	}
-
-	h.app.Logger.Info().
-		Str("cid", blobRef.Ref.Link).
-		Int("size", blobRef.Size).
-		Str("mimeType", blobRef.MimeType).
-		Msg("blob uploaded successfully")
 
 	// Create/update cache record
 	cache := &pds.FeedCache{
@@ -926,13 +845,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		FeedCount:   len(feeds),
 	}
 
-	h.app.Logger.Info().
-		Str("collection", pds.FeedCacheNSID).
-		Str("rkey", "self").
-		Interface("blobRef", blobRef).
-		Msg("creating feed cache record")
-
-	cid, err := pdsClient.CreateFeedCache(r.Context(), cache)
+	_, err = pdsClient.CreateFeedCache(r.Context(), cache)
 	if err != nil {
 		h.app.Logger.Error().Err(err).Msg("create feed cache")
 		http.Error(w, "Failed to save cache", http.StatusInternalServerError)
@@ -940,10 +853,9 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.app.Logger.Info().
-		Str("recordCID", cid).
 		Int("items", len(filteredItems)).
 		Int("feeds", len(feeds)).
-		Msg("feed cache record created successfully")
+		Msg("Feed cache refreshed successfully")
 
 	// Return JSON response in same format as GetFeedCache
 	w.Header().Set("Content-Type", "application/json")
@@ -986,11 +898,6 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Download blob
-	h.app.Logger.Info().
-		Str("cid", cache.Blob.Ref.Link).
-		Str("did", session.DID.String()).
-		Msg("fetching blob from PDS")
-
 	blobData, mimeType, err := pdsClient.GetBlob(r.Context(), cache.Blob.Ref.Link)
 	if err != nil {
 		h.app.Logger.Error().
@@ -1001,12 +908,6 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load cache due to PDS blob serving issue", http.StatusInternalServerError)
 		return
 	}
-
-	h.app.Logger.Info().
-		Int("blobDataSize", len(blobData)).
-		Str("mimeType", mimeType).
-		Str("cid", cache.Blob.Ref.Link).
-		Msg("blob data received successfully")
 
 	// Parse cache data (ignore mime type since PDS may not set it correctly)
 	var cacheData pds.FeedCacheData
@@ -1019,20 +920,6 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 			Msg("unmarshal cache data failed")
 		http.Error(w, "Invalid cache data", http.StatusInternalServerError)
 		return
-	}
-
-	h.app.Logger.Info().
-		Int("blobSize", len(blobData)).
-		Int("itemCount", len(cacheData.Items)).
-		Str("cid", cache.Blob.Ref.Link).
-		Msg("✓ Using PDS blob to populate feed cache")
-
-	// Log a sample of items for verification
-	if len(cacheData.Items) > 0 {
-		h.app.Logger.Info().
-			Str("firstItem", cacheData.Items[0].Title).
-			Str("feedTitle", cacheData.Items[0].FeedTitle).
-			Msg("Sample item from PDS blob cache")
 	}
 
 	// Filter out removed entries
@@ -1055,12 +942,6 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 			filteredItems = append(filteredItems, item)
 		}
 	}
-
-	h.app.Logger.Info().
-		Int("originalCount", len(cacheData.Items)).
-		Int("filteredCount", len(filteredItems)).
-		Int("removedCount", len(removedURLs)).
-		Msg("Filtered removed entries from cache")
 
 	// Return cache data
 	w.Header().Set("Content-Type", "application/json")
@@ -1417,12 +1298,6 @@ type FeedItemView struct {
 // Home shows the home page.
 func (h *HomeHandler) Home(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
-
-	h.app.Logger.Info().
-		Bool("has_session", session != nil).
-		Str("path", r.URL.Path).
-		Str("remote_addr", r.RemoteAddr).
-		Msg("Home page accessed")
 
 	if session == nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
