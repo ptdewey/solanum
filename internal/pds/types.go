@@ -13,6 +13,7 @@ const (
 	ReadingItemNSID     = "net.solanaceae.solanum.readingItem"
 	FeedCacheNSID       = "net.solanaceae.solanum.feedCache"
 	RemovedEntriesNSID  = "net.solanaceae.solanum.removedEntries"
+	ReadingArchiveNSID  = "net.solanaceae.solanum.readingArchive"
 	LeafletSubscription = "pub.leaflet.graph.subscription"
 )
 
@@ -54,15 +55,13 @@ func (f *Feed) ToRecord() FeedRecord {
 // ReadingItem represents a reading list bookmark stored in the user's PDS.
 // Corresponds to lexicon: net.solanaceae.solanum.readingItem
 type ReadingItem struct {
-	URI         string     `json:"uri,omitempty"`         // AT URI
-	CID         string     `json:"cid,omitempty"`         // Content ID
-	RKey        string     `json:"rkey,omitempty"`        // Record key
-	URL         string     `json:"url"`                   // Article URL
-	Title       string     `json:"title"`                 // Article title
-	Description string     `json:"description,omitempty"` // Description/excerpt
-	IsArchived  bool       `json:"isArchived"`            // Whether item is read
-	ArchivedAt  *time.Time `json:"archivedAt,omitempty"`  // When archived
-	CreatedAt   time.Time  `json:"createdAt"`             // When added
+	URI         string    `json:"uri,omitempty"`         // AT URI
+	CID         string    `json:"cid,omitempty"`         // Content ID
+	RKey        string    `json:"rkey,omitempty"`        // Record key
+	URL         string    `json:"url"`                   // Article URL
+	Title       string    `json:"title"`                 // Article title
+	Description string    `json:"description,omitempty"` // Description/excerpt
+	CreatedAt   time.Time `json:"createdAt"`             // When added
 }
 
 // ReadingItemRecord is the record format for PDS storage.
@@ -71,25 +70,18 @@ type ReadingItemRecord struct {
 	URL         string `json:"url"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
-	IsArchived  bool   `json:"isArchived"`
-	ArchivedAt  string `json:"archivedAt,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 }
 
 // ToRecord converts a ReadingItem to its PDS record format.
 func (r *ReadingItem) ToRecord() ReadingItemRecord {
-	rec := ReadingItemRecord{
+	return ReadingItemRecord{
 		Type:        ReadingItemNSID,
 		URL:         r.URL,
 		Title:       r.Title,
 		Description: r.Description,
-		IsArchived:  r.IsArchived,
 		CreatedAt:   r.CreatedAt.Format(time.RFC3339),
 	}
-	if r.ArchivedAt != nil {
-		rec.ArchivedAt = r.ArchivedAt.Format(time.RFC3339)
-	}
-	return rec
 }
 
 // LeafletSubscription represents a pub.leaflet.graph.subscription record.
@@ -225,4 +217,47 @@ func (re *RemovedEntries) ToRecord() RemovedEntriesRecord {
 type RemovedEntriesData struct {
 	LastUpdated time.Time `json:"lastUpdated"`
 	URLs        []string  `json:"urls"` // List of removed entry URLs
+}
+
+// ReadingArchive represents archived reading items stored as a blob.
+// Corresponds to lexicon: net.solanaceae.solanum.readingArchive
+type ReadingArchive struct {
+	URI         string    `json:"uri,omitempty"`  // AT URI
+	CID         string    `json:"cid,omitempty"`  // Content ID
+	RKey        string    `json:"rkey,omitempty"` // Record key (always "self")
+	Blob        BlobRef   `json:"blob"`           // Blob reference
+	LastUpdated time.Time `json:"lastUpdated"`    // When archive was last updated
+	ItemCount   int       `json:"itemCount"`      // Number of archived items
+}
+
+// ReadingArchiveRecord is the record format for PDS storage.
+type ReadingArchiveRecord struct {
+	Type        string  `json:"$type"`
+	Blob        BlobRef `json:"blob"`
+	LastUpdated string  `json:"lastUpdated"`
+	ItemCount   int     `json:"itemCount"`
+}
+
+// ToRecord converts ReadingArchive to its PDS record format.
+func (ra *ReadingArchive) ToRecord() ReadingArchiveRecord {
+	return ReadingArchiveRecord{
+		Type:        ReadingArchiveNSID,
+		Blob:        ra.Blob,
+		LastUpdated: ra.LastUpdated.Format(time.RFC3339),
+		ItemCount:   ra.ItemCount,
+	}
+}
+
+// ReadingArchiveData is the JSON structure stored in the blob.
+type ReadingArchiveData struct {
+	LastUpdated time.Time            `json:"lastUpdated"`
+	Items       []ReadingArchiveItem `json:"items"`
+}
+
+// ReadingArchiveItem represents an archived reading item in the blob.
+type ReadingArchiveItem struct {
+	URL         string    `json:"url"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"` // Shortened to 100-120 chars
+	ArchivedAt  time.Time `json:"archivedAt"`
 }

@@ -25,16 +25,6 @@
             "maxLength": 2000,
             "description": "A description or excerpt from the content."
           },
-          "isArchived": {
-            "type": "boolean",
-            "default": false,
-            "description": "Whether this item has been read/archived."
-          },
-          "archivedAt": {
-            "type": "string",
-            "format": "datetime",
-            "description": "Timestamp when the item was archived (marked as read)."
-          },
           "createdAt": {
             "type": "string",
             "format": "datetime",

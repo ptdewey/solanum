@@ -1,0 +1,33 @@
+{
+  "lexicon": 1,
+  "id": "net.solanaceae.solanum.readingArchive",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Archived reading list items stored as a blob.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["blob", "lastUpdated", "itemCount"],
+        "properties": {
+          "blob": {
+            "type": "blob",
+            "accept": ["application/json"],
+            "maxSize": 52428800,
+            "description": "JSON blob containing archived reading items."
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the archive was last updated."
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of archived items in the blob."
+          }
+        }
+      }
+    }
+  }
+}

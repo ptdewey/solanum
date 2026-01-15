@@ -13,16 +13,13 @@ Each should be addressed one at a time, and the item should be removed after imp
    fetch all blobs of the feedCache type from the user (or feedcache would be able to
    reference multiple blobs).
 
-2. [High priority] Allow removing from the home feed page. This will require making a new blob that
-   stores removed entries. This one could be optimized by storing minimal information
-   (probably just the url to be able to identify it and filter out of fetches).
-   With this, I would also want to be able to tag entries from the homepage as read,
-   which would add them to the new blob as well as creating a reading list entry
-   that is archived immediately.
-   The home page entries blob would explicitly not include entries from the removed
-   feed items blob.
-
-3. [medium priority] Store more than 200 feed entries in blob. We have plenty of storage room, and there
+2. [medium priority] Store more than 200 feed entries in blob. We have plenty of storage room, and there
    isn't really a downside since we already fetch the entire rss feed anyway.
+
+3. [High priority] Swap to blob storage for archived reading list items? It would be cool to have
+   an actual archive of read articles somewhere, storing records for that may result in too many.
+   This would involve making a new blob lexicon, it would store link, name, and shortened desc (100-120 chars?)
+   Deleting from archive would remove from the blob, and adding to archive would add to the blob.
+   Remove the archived field from the reading list item lexicon.
 
 ## Fixes

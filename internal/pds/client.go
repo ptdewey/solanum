@@ -149,11 +149,33 @@ func (c *Client) ArchiveReadingItem(ctx context.Context, rkey string) error {
 	if err != nil {
 		return fmt.Errorf("get reading item: %w", err)
 	}
-	now := time.Now().UTC()
-	item.IsArchived = true
-	item.ArchivedAt = &now
-	_, err = c.UpdateReadingItem(ctx, rkey, item)
-	return err
+
+	// Add to archive blob
+	archiveItem := ReadingArchiveItem{
+		URL:         item.URL,
+		Title:       item.Title,
+		Description: truncateDescription(item.Description, 120),
+		ArchivedAt:  time.Now().UTC(),
+	}
+
+	if err := c.AddArchivedItem(ctx, archiveItem); err != nil {
+		return fmt.Errorf("add to archive: %w", err)
+	}
+
+	// Delete the reading item
+	if err := c.DeleteReadingItem(ctx, rkey); err != nil {
+		return fmt.Errorf("delete reading item: %w", err)
+	}
+
+	return nil
+}
+
+// truncateDescription truncates a description to the specified max length.
+func truncateDescription(desc string, maxLen int) string {
+	if len(desc) <= maxLen {
+		return desc
+	}
+	return desc[:maxLen-3] + "..."
 }
 
 // DeleteReadingItem removes a reading list item from the user's PDS.
@@ -276,14 +298,20 @@ func (c *Client) UploadBlob(ctx context.Context, data []byte, mimeType string) (
 	}
 	defer resp.Body.Close()
 
+	// Read response body for debugging
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+
 	// Parse the response
 	var output atproto.RepoUploadBlob_Output
-	if err := json.NewDecoder(resp.Body).Decode(&output); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	if err := json.Unmarshal(bodyBytes, &output); err != nil {
+		return nil, fmt.Errorf("decode response: %w (body: %s)", err, string(bodyBytes))
 	}
 
 	if output.Blob == nil {
-		return nil, fmt.Errorf("upload succeeded but returned nil blob")
+		return nil, fmt.Errorf("upload succeeded but returned nil blob (body: %s)", string(bodyBytes))
 	}
 
 	// Convert LexBlob to our BlobRef format
@@ -502,6 +530,193 @@ func (c *Client) GetRemovedURLs(ctx context.Context) ([]string, error) {
 	}
 
 	return removedData.URLs, nil
+}
+
+// GetReadingArchive retrieves the reading archive record.
+func (c *Client) GetReadingArchive(ctx context.Context) (*ReadingArchive, error) {
+	rec, err := c.getRecord(ctx, ReadingArchiveNSID, "self")
+	if err != nil {
+		return nil, err
+	}
+
+	var archive ReadingArchive
+	if err := json.Unmarshal(rec.Value, &archive); err != nil {
+		return nil, fmt.Errorf("unmarshal reading archive: %w", err)
+	}
+	archive.URI = rec.URI
+	archive.CID = rec.CID
+	archive.RKey = "self"
+	return &archive, nil
+}
+
+// CreateReadingArchive creates or updates the reading archive record.
+// Uses putRecord to upsert with the literal "self" rkey.
+func (c *Client) CreateReadingArchive(ctx context.Context, archive *ReadingArchive) (string, error) {
+	archive.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, ReadingArchiveNSID, "self", archive.ToRecord())
+}
+
+// UpdateReadingArchive updates the reading archive record.
+func (c *Client) UpdateReadingArchive(ctx context.Context, archive *ReadingArchive) (string, error) {
+	archive.LastUpdated = time.Now().UTC()
+	return c.putRecord(ctx, ReadingArchiveNSID, "self", archive.ToRecord())
+}
+
+// DeleteReadingArchive removes the reading archive record.
+func (c *Client) DeleteReadingArchive(ctx context.Context) error {
+	return c.deleteRecord(ctx, ReadingArchiveNSID, "self")
+}
+
+// AddArchivedItem adds an item to the reading archive blob.
+func (c *Client) AddArchivedItem(ctx context.Context, item ReadingArchiveItem) error {
+	// Try to get existing archive
+	archive, err := c.GetReadingArchive(ctx)
+	if err != nil {
+		// If doesn't exist, create new one with empty blob
+		archiveData := ReadingArchiveData{
+			LastUpdated: time.Now().UTC(),
+			Items:       []ReadingArchiveItem{item},
+		}
+
+		jsonData, err := json.Marshal(archiveData)
+		if err != nil {
+			return fmt.Errorf("marshal archive data: %w", err)
+		}
+
+		// HACK: use text/plain instead of application/json due to PDS blob serving bug
+		blobRef, err := c.UploadBlob(ctx, jsonData, "text/plain")
+		if err != nil {
+			return fmt.Errorf("upload blob: %w", err)
+		}
+
+		archive = &ReadingArchive{
+			Blob:        *blobRef,
+			LastUpdated: time.Now().UTC(),
+			ItemCount:   1,
+		}
+
+		_, err = c.CreateReadingArchive(ctx, archive)
+		return err
+	}
+
+	// Download existing blob
+	blobData, _, err := c.GetBlob(ctx, archive.Blob.Ref.Link)
+	if err != nil {
+		return fmt.Errorf("get blob: %w", err)
+	}
+
+	// Parse existing data
+	var archiveData ReadingArchiveData
+	if err := json.Unmarshal(blobData, &archiveData); err != nil {
+		return fmt.Errorf("unmarshal archive data: %w", err)
+	}
+
+	// Check if URL already exists (avoid duplicates)
+	for _, existingItem := range archiveData.Items {
+		if existingItem.URL == item.URL {
+			return nil // Already archived
+		}
+	}
+
+	// Add new item
+	archiveData.Items = append(archiveData.Items, item)
+	archiveData.LastUpdated = time.Now().UTC()
+
+	// Upload updated blob
+	jsonData, err := json.Marshal(archiveData)
+	if err != nil {
+		return fmt.Errorf("marshal archive data: %w", err)
+	}
+
+	// HACK: use text/plain instead of application/json due to PDS blob serving bug
+	blobRef, err := c.UploadBlob(ctx, jsonData, "text/plain")
+	if err != nil {
+		return fmt.Errorf("upload blob: %w", err)
+	}
+
+	// Update record
+	archive.Blob = *blobRef
+	archive.ItemCount = len(archiveData.Items)
+	_, err = c.UpdateReadingArchive(ctx, archive)
+	return err
+}
+
+// RemoveArchivedItem removes an item from the reading archive blob by URL.
+func (c *Client) RemoveArchivedItem(ctx context.Context, url string) error {
+	archive, err := c.GetReadingArchive(ctx)
+	if err != nil {
+		// If archive doesn't exist, nothing to remove
+		return nil
+	}
+
+	// Download existing blob
+	blobData, _, err := c.GetBlob(ctx, archive.Blob.Ref.Link)
+	if err != nil {
+		return fmt.Errorf("get blob: %w", err)
+	}
+
+	// Parse existing data
+	var archiveData ReadingArchiveData
+	if err := json.Unmarshal(blobData, &archiveData); err != nil {
+		return fmt.Errorf("unmarshal archive data: %w", err)
+	}
+
+	// Remove item with matching URL
+	filteredItems := make([]ReadingArchiveItem, 0, len(archiveData.Items))
+	for _, item := range archiveData.Items {
+		if item.URL != url {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+
+	// If nothing was removed, we're done
+	if len(filteredItems) == len(archiveData.Items) {
+		return nil
+	}
+
+	archiveData.Items = filteredItems
+	archiveData.LastUpdated = time.Now().UTC()
+
+	// Upload updated blob
+	jsonData, err := json.Marshal(archiveData)
+	if err != nil {
+		return fmt.Errorf("marshal archive data: %w", err)
+	}
+
+	// HACK: use text/plain instead of application/json due to PDS blob serving bug
+	blobRef, err := c.UploadBlob(ctx, jsonData, "text/plain")
+	if err != nil {
+		return fmt.Errorf("upload blob: %w", err)
+	}
+
+	// Update record
+	archive.Blob = *blobRef
+	archive.ItemCount = len(archiveData.Items)
+	_, err = c.UpdateReadingArchive(ctx, archive)
+	return err
+}
+
+// GetArchivedItems retrieves all archived items from the blob.
+func (c *Client) GetArchivedItems(ctx context.Context) ([]ReadingArchiveItem, error) {
+	archive, err := c.GetReadingArchive(ctx)
+	if err != nil {
+		// If archive doesn't exist, return empty list
+		return []ReadingArchiveItem{}, nil
+	}
+
+	// Download blob
+	blobData, _, err := c.GetBlob(ctx, archive.Blob.Ref.Link)
+	if err != nil {
+		return nil, fmt.Errorf("get blob: %w", err)
+	}
+
+	// Parse data
+	var archiveData ReadingArchiveData
+	if err := json.Unmarshal(blobData, &archiveData); err != nil {
+		return nil, fmt.Errorf("unmarshal archive data: %w", err)
+	}
+
+	return archiveData.Items, nil
 }
 
 // Record represents a generic PDS record response.

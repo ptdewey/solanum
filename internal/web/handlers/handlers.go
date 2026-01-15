@@ -573,7 +573,7 @@ func (h *FeedHandler) RemoveEntry(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// MarkEntryAsRead marks an entry as read by creating an archived reading list item.
+// MarkEntryAsRead marks an entry as read by adding it to the archive blob.
 func (h *FeedHandler) MarkEntryAsRead(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
 	if session == nil {
@@ -619,32 +619,37 @@ func (h *FeedHandler) MarkEntryAsRead(w http.ResponseWriter, r *http.Request) {
 	apiClient := oauthSess.APIClient()
 	pdsClient := pds.NewClient(apiClient, session.DID)
 
-	// Create reading item that is immediately archived
-	now := time.Now().UTC()
-	item := &pds.ReadingItem{
+	// Add to archive blob
+	archiveItem := pds.ReadingArchiveItem{
 		URL:         entryURL,
 		Title:       title,
-		Description: description,
-		IsArchived:  true,
-		ArchivedAt:  &now,
+		Description: truncateDescription(description, 120),
+		ArchivedAt:  time.Now().UTC(),
 	}
 
-	_, _, err = pdsClient.CreateReadingItem(r.Context(), item)
-	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("create archived reading item")
+	if err := pdsClient.AddArchivedItem(r.Context(), archiveItem); err != nil {
+		h.app.Logger.Error().Err(err).Msg("add to archive blob")
 		http.Error(w, "Failed to mark as read", http.StatusInternalServerError)
 		return
 	}
 
 	// Also add to removed entries
 	if err := pdsClient.AddRemovedEntry(r.Context(), entryURL); err != nil {
-		h.app.Logger.Warn().Err(err).Str("url", entryURL).Msg("failed to add to removed entries, but reading item was created")
+		h.app.Logger.Warn().Err(err).Str("url", entryURL).Msg("failed to add to removed entries, but item was archived")
 	}
 
 	h.app.Logger.Info().Str("url", entryURL).Msg("Entry marked as read and archived")
 
 	// Return success response for HTMX
 	w.WriteHeader(http.StatusOK)
+}
+
+// truncateDescription truncates a description to the specified max length.
+func truncateDescription(desc string, maxLen int) string {
+	if len(desc) <= maxLen {
+		return desc
+	}
+	return desc[:maxLen-3] + "..."
 }
 
 // RefreshFeeds fetches all RSS feeds and updates the PDS blob cache.
@@ -1060,20 +1065,14 @@ func (h *ReadingListHandler) ListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Separate active and archived items
-	var active, archived []pds.ReadingItem
-	for _, item := range items {
-		if item.IsArchived {
-			archived = append(archived, item)
-		} else {
-			active = append(active, item)
-		}
-	}
+	// Check if there are any archived items
+	archivedItems, err := pdsClient.GetArchivedItems(r.Context())
+	hasArchived := err == nil && len(archivedItems) > 0
 
 	data := map[string]interface{}{
 		"Session":     session,
-		"Active":      active,
-		"HasArchived": len(archived) > 0,
+		"Active":      items,
+		"HasArchived": hasArchived,
 	}
 
 	tmpl, ok := h.app.Templates["reading_list.tmpl"]
@@ -1088,7 +1087,7 @@ func (h *ReadingListHandler) ListItems(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ArchivePage shows archived reading list items.
+// ArchivePage shows archived reading list items from the archive blob.
 func (h *ReadingListHandler) ArchivePage(w http.ResponseWriter, r *http.Request) {
 	session := getSession(r.Context())
 	if session == nil {
@@ -1105,24 +1104,16 @@ func (h *ReadingListHandler) ArchivePage(w http.ResponseWriter, r *http.Request)
 
 	apiClient := oauthSess.APIClient()
 	pdsClient := pds.NewClient(apiClient, session.DID)
-	items, err := pdsClient.ListReadingItems(r.Context())
+	archivedItems, err := pdsClient.GetArchivedItems(r.Context())
 	if err != nil {
-		h.app.Logger.Error().Err(err).Msg("list reading items")
+		h.app.Logger.Error().Err(err).Msg("get archived items")
 		http.Error(w, "Failed to load archive", http.StatusInternalServerError)
 		return
 	}
 
-	// Filter only archived items
-	var archived []pds.ReadingItem
-	for _, item := range items {
-		if item.IsArchived {
-			archived = append(archived, item)
-		}
-	}
-
 	data := map[string]interface{}{
 		"Session":  session,
-		"Archived": archived,
+		"Archived": archivedItems,
 	}
 
 	tmpl, ok := h.app.Templates["archive.tmpl"]
@@ -1261,6 +1252,43 @@ func (h *ReadingListHandler) DeleteItem(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, "/reading-list", http.StatusFound)
+}
+
+// DeleteArchivedItem removes an item from the archive blob by URL.
+func (h *ReadingListHandler) DeleteArchivedItem(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	itemURL := strings.TrimSpace(r.FormValue("url"))
+	if itemURL == "" {
+		http.Error(w, "URL is required", http.StatusBadRequest)
+		return
+	}
+
+	oauthSess, err := h.app.OAuth.ResumeSession(r.Context(), session.DID, session.SessionID)
+	if err != nil {
+		h.app.Logger.Error().Err(err).Msg("resume oauth session")
+		http.Error(w, "Authentication error", http.StatusInternalServerError)
+		return
+	}
+
+	apiClient := oauthSess.APIClient()
+	pdsClient := pds.NewClient(apiClient, session.DID)
+	if err := pdsClient.RemoveArchivedItem(r.Context(), itemURL); err != nil {
+		h.app.Logger.Error().Err(err).Str("url", itemURL).Msg("delete archived item")
+		http.Error(w, "Failed to delete item", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/reading-list/archive", http.StatusFound)
 }
 
 // HomeHandler shows the home page with recent feed items.
