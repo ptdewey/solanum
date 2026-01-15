@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -241,20 +242,44 @@ func (c *Client) GetLeafletFeedRSSURL(ctx context.Context, publicationURI string
 	return basePath + "/rss", nil
 }
 
-// UploadBlob uploads binary data as a blob to the PDS using indigo's native function.
+// UploadBlob uploads binary data as a blob to the PDS with the specified MIME type.
 // Returns the blob reference needed for embedding in records.
+//
+// TODO: atproto.RepoUploadBlob exists but doesn't support setting Content-Type header.
+// If indigo adds Content-Type support, switch to using that simpler function instead.
 func (c *Client) UploadBlob(ctx context.Context, data []byte, mimeType string) (*BlobRef, error) {
 	// Validate blob size
 	if len(data) > MaxBlobSize {
 		return nil, fmt.Errorf("blob size %d exceeds maximum allowed size %d bytes", len(data), MaxBlobSize)
 	}
 
-	// Use indigo's native RepoUploadBlob function
+	// Create a reader for the data
 	reader := bytes.NewReader(data)
 
-	output, err := atproto.RepoUploadBlob(ctx, c.api, reader)
+	// Create the API request with Content-Type header
+	endpoint, err := syntax.ParseNSID("com.atproto.repo.uploadBlob")
+	if err != nil {
+		return nil, fmt.Errorf("parse endpoint: %w", err)
+	}
+
+	req := atclient.NewAPIRequest(http.MethodPost, endpoint, reader)
+	req.Headers = http.Header{}
+	req.Headers.Set("Content-Type", mimeType)
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+
+	// Make the request
+	resp, err := c.api.Do(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("upload blob: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Parse the response
+	var output atproto.RepoUploadBlob_Output
+	if err := json.NewDecoder(resp.Body).Decode(&output); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
 	if output.Blob == nil {

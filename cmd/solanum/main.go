@@ -20,20 +20,20 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// OAuth scopes
 var scopes = []string{
 	"atproto",
-	"transition:generic",
-	// FIX: blob storage scope isn't working.
-	// re-enable these scopes if the issue is addressed.
-	// "repo:net.solanaceae.solanum.feedCache",
-	// "repo:net.solanaceae.solanum.feed",
-	// "repo:net.solanaceae.solanum.readingItem",
-	// "blob:*/*",
+	"repo:net.solanaceae.solanum.feedCache",
+	"repo:net.solanaceae.solanum.feed",
+	"repo:net.solanaceae.solanum.readingItem",
+	// HACK: this should be 'application/json' once mime type issue is fixed.
+	// (PDS shows metadata for blob instead of blob contents with json mimetype)
+	"blob:text/plain",
 }
 
 func main() {
-	// Parse flags
+	// TODO: improve ergonomics here, these flags suck.
+	// - make some of them env vars, but also rework
+	// - user should not need to set callback url or oauth client id
 	addr := flag.String("addr", ":8080", "HTTP server address")
 	dbPath := flag.String("db", "solanum.db", "SQLite database path")
 	clientID := flag.String("client-id", "", "OAuth client ID (use 127.0.0.1 URL for development)")
@@ -41,20 +41,16 @@ func main() {
 	production := flag.Bool("production", false, "Run in production mode (enables HSTS, secure cookies)")
 	flag.Parse()
 
-	// Setup logger
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
 		With().
 		Timestamp().
 		Logger()
 
-	// For development, use 127.0.0.1 client ID if not provided (localhost doesn't work for OAuth)
-	// Note: For localhost OAuth, scopes are passed via the scopes array to NewLocalhostConfig, NOT in the client ID URL
 	if *clientID == "" {
 		*clientID = "http://127.0.0.1:8080"
 		logger.Info().Str("client_id", *clientID).Msg("using 127.0.0.1 OAuth client ID for development")
 	}
 
-	// Open database
 	db, err := sql.Open("sqlite", *dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		logger.Fatal().Err(err).Msg("open database")
@@ -65,7 +61,6 @@ func main() {
 		}
 	}()
 
-	// Initialize stores
 	authStore, err := auth.NewSQLiteAuthStore(db)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("init auth store")
@@ -83,10 +78,8 @@ func main() {
 
 	oauthService := auth.NewOAuthService(*clientID, *callbackURL, scopes, authStore)
 
-	// Initialize services
 	feedService := feed.NewService(feedCache)
 
-	// Parse templates - parse base first, then each page with the base
 	baseTemplate, err := template.ParseFS(public.TemplatesFS, "templates/base.tmpl")
 	if err != nil {
 		logger.Fatal().Err(err).Msg("parse base template")

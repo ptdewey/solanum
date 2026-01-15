@@ -648,7 +648,8 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 		Int("items", len(allItems)).
 		Int("feeds", len(feeds)).
 		Msg("PDS blob: uploading feed cache to PDS")
-	blobRef, err := pdsClient.UploadBlob(r.Context(), jsonData, "application/json")
+	// HACK: once pds json blob mimetype issue is fixed, swap to 'application/json'
+	blobRef, err := pdsClient.UploadBlob(r.Context(), jsonData, "text/plain")
 	if err != nil {
 		h.app.Logger.Error().Err(err).Msg("upload blob")
 		http.Error(w, "Failed to upload cache", http.StatusInternalServerError)
