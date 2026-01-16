@@ -16,7 +16,7 @@
         type="text" 
         id="searchInput"
         placeholder="Search posts..." 
-        class="search-input"
+        class="input"
         oninput="performSearch()"
     />
     <button id="clearSearchBtn" class="btn btn-secondary" onclick="clearSearch()" style="display: none;">Clear</button>
@@ -41,14 +41,6 @@
     margin-bottom: 1.5rem;
 }
 
-.search-input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 1rem;
-}
-
 .pagination {
     display: flex;
     justify-content: center;
@@ -65,30 +57,19 @@
 
 .feed-badge {
     display: inline-block;
-    color: var(--accent);
+    color: var(--moss-500);
     font-size: 0.875rem;
     font-weight: 500;
 }
 
 .feed-badge a {
-    color: var(--accent);
+    color: var(--moss-500);
     text-decoration: none;
 }
 
 .feed-badge a:hover {
+    color: var(--moss-600);
     text-decoration: underline;
-}
-
-.card p {
-    margin: 0.25rem 0 0 0;
-}
-
-.card .card-meta {
-    margin-bottom: 0.25rem;
-}
-
-.card .card-title {
-    margin: 0 0 0.25rem;
 }
 
 #refreshBtn:disabled {
@@ -112,14 +93,7 @@
     flex-wrap: wrap;
 }
 
-.btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    height: auto;
-    line-height: 1.2;
-}
-
-.card.removing {
+.feed-item.removing {
     opacity: 0.5;
     transition: opacity 0.3s ease-out;
 }
@@ -129,7 +103,7 @@
     to { opacity: 0; transform: scale(0.95); }
 }
 
-.card.fade-out {
+.feed-item.fade-out {
     animation: fadeOut 0.3s ease-out forwards;
 }
 </style>
@@ -197,7 +171,7 @@ async function fetchCacheFromServer() {
         if (data.error === 'blob_corrupted') {
             console.warn('PDS blob was corrupted, user needs to refresh');
             document.getElementById('results').innerHTML = `
-                <div class="empty">
+                <div class="empty-state">
                     <p>Your feed cache was corrupted in storage.</p>
                     <p>Click "Refresh Feeds" to recreate it.</p>
                 </div>
@@ -217,7 +191,7 @@ async function fetchCacheFromServer() {
         applyFiltersAndRender();
     } catch (error) {
         console.error('Error fetching cache:', error);
-        document.getElementById('results').innerHTML = '<div class="empty"><p>Failed to load feed items. Try refreshing.</p></div>';
+        document.getElementById('results').innerHTML = '<div class="empty-state"><p>Failed to load feed items. Try refreshing.</p></div>';
     } finally {
         loading.style.display = 'none';
     }
@@ -332,11 +306,11 @@ function renderItems() {
     
     if (filteredItems.length === 0) {
         if (searchQuery) {
-            results.innerHTML = '<div class="empty"><p>No posts match your search.</p></div>';
+            results.innerHTML = '<div class="empty-state"><p>No posts match your search.</p></div>';
         } else if (allItems.length === 0) {
-            results.innerHTML = '<div class="empty"><p>No posts yet. <a href="/feeds">Add some feeds</a> and click "Refresh Feeds" to get started.</p></div>';
+            results.innerHTML = '<div class="empty-state"><p>No posts yet. <a href="/feeds">Add some feeds</a> and click "Refresh Feeds" to get started.</p></div>';
         } else {
-            results.innerHTML = '<div class="empty"><p>No posts found.</p></div>';
+            results.innerHTML = '<div class="empty-state"><p>No posts found.</p></div>';
         }
         return;
     }
@@ -365,18 +339,18 @@ function renderItems() {
         const feedLink = feedRKey ? `/feeds/${escapeHtml(feedRKey)}/view` : '#';
         
         html += `
-        <div class="card" id="entry-${escapeHtml(item.link).replace(/[^a-zA-Z0-9]/g, '_')}">
+        <div class="feed-item" id="entry-${escapeHtml(item.link).replace(/[^a-zA-Z0-9]/g, '_')}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <span class="feed-badge"><a href="${feedLink}">${escapeHtml(item.feedTitle)}</a></span>
                 <div class="entry-actions">
                     <button 
-                        class="btn btn-secondary btn-sm"
+                        class="btn btn-ghost btn-sm"
                         onclick="markAsRead('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                         title="Mark as read">
                         ✓ Read
                     </button>
                     <button 
-                        class="btn btn-secondary btn-sm"
+                        class="btn btn-ghost btn-sm"
                         onclick="saveForLater('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                         title="Save for later">
                         📑 Save
@@ -389,14 +363,14 @@ function renderItems() {
                     </button>
                 </div>
             </div>
-            <h3 class="card-title">
+            <h3 class="feed-item-title">
                 <a href="${escapeHtml(item.link)}" target="_blank">${escapeHtml(item.title)}</a>
             </h3>
-            <div class="card-meta">
+            <div class="feed-item-meta">
                 ${item.author ? escapeHtml(item.author) + ' &middot; ' : ''}
                 ${formattedDate}
             </div>
-            ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
+            ${item.description ? `<p class="feed-item-description">${escapeHtml(item.description)}</p>` : ''}
         </div>
         `;
     });
@@ -583,7 +557,7 @@ async function saveForLater(url, title, description) {
         const card = document.getElementById(cardId);
         if (card) {
             const originalContent = card.style.borderColor;
-            card.style.borderColor = '#4da6ff';
+            card.style.borderColor = 'var(--moss-500)';
             setTimeout(() => {
                 card.style.borderColor = originalContent;
             }, 1000);

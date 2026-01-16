@@ -4,169 +4,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{block "title" .}}Feeder{{end}}</title>
-    <style>
-        :root {
-            --bg: #fafafa;
-            --fg: #1a1a1a;
-            --accent: #0066cc;
-            --border: #ddd;
-            --muted: #666;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #1a1a1a;
-                --fg: #fafafa;
-                --accent: #4da6ff;
-                --border: #333;
-                --muted: #999;
-            }
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--fg);
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 1rem;
-            line-height: 1.6;
-        }
-        nav {
-            display: flex;
-            gap: 1rem;
-            padding: 1rem 0;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 1rem;
-        }
-        nav a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-        nav a:hover { text-decoration: underline; }
-        .nav-right { margin-left: auto; }
-        h1 { margin-top: 0; }
-        a { color: var(--accent); }
-        .btn {
-            background: var(--accent);
-            color: white;
-            border: none;
-            padding: 0.375rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            height: 2.25rem;
-            line-height: 1.5rem;
-            box-sizing: border-box;
-            text-align: center;
-            vertical-align: middle;
-        }
-        .btn:hover { opacity: 0.9; }
-        .btn-danger { background: #cc0000; }
-        .btn-secondary { background: var(--muted); }
-        input, textarea {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            background: var(--bg);
-            color: var(--fg);
-            margin-bottom: 1rem;
-        }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.25rem; }
-        .card {
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        .card-title { margin: 0 0 0.5rem; }
-        .card-meta { color: var(--muted); font-size: 0.875rem; }
-        .card-actions { margin-top: 0.5rem; }
-        .empty { color: var(--muted); text-align: center; padding: 2rem; }
-        
-        /* Modal styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.2s;
-        }
-        .modal.show {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-content {
-            background-color: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 2rem;
-            max-width: 500px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-            animation: slideIn 0.2s;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .modal-header h2 {
-            margin: 0;
-        }
-        .modal-close {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: var(--muted);
-            padding: 0;
-            width: 2rem;
-            height: 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-close:hover {
-            color: var(--fg);
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        @keyframes slideIn {
-            from { transform: translateY(-20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-    </style>
+    <title>{{block "title" .}}Solanum{{end}}</title>
+    <link rel="stylesheet" href="/static/feeder.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
-    <!-- <script src="/static/htmx.min.js"></script> -->
 </head>
 <body>
     {{if .Session}}
     <nav>
-        <a href="/">Home</a>
-        <a href="/feeds">Feeds</a>
-        <a href="/reading-list">Reading List</a>
-        <span class="nav-right">
-            {{.Session.Handle}}
-            <form action="/oauth/logout" method="POST" style="display:inline">
-                <button type="submit" class="btn btn-secondary">Logout</button>
-            </form>
-        </span>
+        <div class="container">
+            <div class="nav-content">
+                <a href="/" class="nav-brand">🌿 Solanum</a>
+                <div class="nav-links">
+                    <a href="/feeds" class="nav-link">Feeds</a>
+                    <a href="/reading-list" class="nav-link">Reading List</a>
+                </div>
+                <div class="nav-user">
+                    <button class="profile-button" onclick="toggleProfileMenu(event)">
+                        {{if .Session.Avatar}}
+                        <img src="{{.Session.Avatar}}" alt="Profile" class="profile-avatar">
+                        {{else}}
+                        <div class="profile-avatar-placeholder">{{index .Session.Handle 0}}</div>
+                        {{end}}
+                    </button>
+                    
+                    <div id="profileMenu" class="profile-menu" style="display: none;">
+                        <div class="profile-menu-header">
+                            <strong>{{.Session.Handle}}</strong>
+                        </div>
+                        <form action="/oauth/logout" method="POST" style="margin: 0;">
+                            <button type="submit" class="profile-menu-item btn-danger">Logout</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
     </nav>
     {{end}}
-    {{block "content" .}}{{end}}
+    
+    <main class="container">
+        {{block "content" .}}{{end}}
+    </main>
+    
+    <script>
+        // Modal helper
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.add('show');
+            }
+        }
+        
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        }
+        
+        // Close modal on outside click
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('modal')) {
+                closeModal(e.target.id);
+            }
+        });
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modals = document.querySelectorAll('.modal.show');
+                modals.forEach(modal => {
+                    closeModal(modal.id);
+                });
+            }
+        });
+
+        // Profile menu toggle
+        function toggleProfileMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('profileMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Close profile menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('profileMenu');
+            const profileButton = document.querySelector('.profile-button');
+            if (menu && !menu.contains(e.target) && !profileButton.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+    </script>
 </body>
 </html>
 {{end}}

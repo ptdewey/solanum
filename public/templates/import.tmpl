@@ -1,11 +1,11 @@
-{{define "title"}}Import Feeds - Feeder{{end}}
+{{define "title"}}Import Feeds - Solanum{{end}}
 
 {{define "leaflet-subscriptions"}}
 {{if eq (len .Subscriptions) 0}}
     {{if gt .AlreadyImported 0}}
-    <div class="empty">All {{.AlreadyImported}} Leaflet subscription(s) have already been imported!</div>
+    <div class="empty-state">All {{.AlreadyImported}} Leaflet subscription(s) have already been imported!</div>
     {{else}}
-    <div class="empty">No Leaflet subscriptions found in your account.</div>
+    <div class="empty-state">No Leaflet subscriptions found in your account.</div>
     {{end}}
 {{else}}
 <form action="/feeds/import/leaflet/import" method="POST">
@@ -25,10 +25,10 @@
         {{end}}
     </div>
     {{if gt .AlreadyImported 0}}
-    <p style="color: var(--muted); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
+    <p style="color: var(--text-tertiary); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
     {{end}}
     <div class="import-actions">
-        <button type="submit" class="btn">Import Selected</button>
+        <button type="submit" class="btn btn-primary">Import Selected</button>
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Cancel</button>
     </div>
 </form>
@@ -37,7 +37,7 @@
 
 {{define "leaflet-results"}}
 {{if and (eq (len .Available) 0) (eq (len .Failed) 0)}}
-<div class="empty">All your Leaflet subscriptions have already been imported!</div>
+<div class="empty-state">All your Leaflet subscriptions have already been imported!</div>
 {{else}}
 {{if gt (len .Available) 0}}
 <form action="/feeds/import/leaflet/import" method="POST">
@@ -57,18 +57,18 @@
         {{end}}
     </div>
     <div class="import-actions">
-        <button type="submit" class="btn">Import Selected</button>
+        <button type="submit" class="btn btn-primary">Import Selected</button>
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Cancel</button>
     </div>
 </form>
 {{end}}
 {{if gt .AlreadyImported 0}}
-<p style="color: var(--muted); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
+<p style="color: var(--text-tertiary); margin-top: 1rem; font-size: 0.875rem;">{{.AlreadyImported}} subscription(s) already imported.</p>
 {{end}}
 {{if gt (len .Failed) 0}}
 <div class="error-section">
     <h4>Could not resolve ({{len .Failed}})</h4>
-    <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem;">These publications may have been deleted or are unavailable.</p>
+    <p style="font-size: 0.875rem; color: var(--text-tertiary); margin-bottom: 0.5rem;">These publications may have been deleted or are unavailable.</p>
     <div class="import-list" style="max-height: 150px;">
         {{range .Failed}}
         <div class="import-item import-item-error">
@@ -86,14 +86,14 @@
 {{end}}
 
 {{define "content"}}
-<h1>Import Feeds</h1>
+<h1 style="margin-bottom: 1.5rem;">Import Feeds</h1>
 
 <div class="card">
-    <h2 class="card-title">Import from Leaflet</h2>
-    <p>Import your RSS subscriptions from <a href="https://leaflet.pub" target="_blank" rel="noopener">Leaflet</a>.</p>
+    <h2 style="margin: 0 0 0.5rem 0; font-size: 1.25rem;">Import from Leaflet</h2>
+    <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">Import your RSS subscriptions from <a href="https://leaflet.pub" target="_blank" rel="noopener">Leaflet</a>.</p>
     
     <button 
-        class="btn"
+        class="btn btn-primary"
         hx-get="/feeds/import/leaflet/fetch"
         hx-target="#import-modal-content"
         hx-swap="innerHTML"
@@ -130,9 +130,16 @@
         align-items: flex-start;
         gap: 0.75rem;
         padding: 0.75rem;
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: 1px solid var(--forest-300);
+        background: var(--forest-100);
+        border-radius: 6px;
         margin-bottom: 0.5rem;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .import-item:hover {
+        background: var(--forest-200);
+        border-color: var(--moss-500);
     }
     .import-item input[type="checkbox"] {
         width: auto;
@@ -147,27 +154,33 @@
     .import-item-title {
         font-weight: 500;
         word-break: break-word;
+        color: var(--forest-950);
     }
     .import-item-url {
         font-size: 0.875rem;
-        color: var(--muted);
+        color: var(--text-tertiary);
         word-break: break-all;
     }
     .import-item-error {
         border-color: #cc0000;
         background: rgba(204, 0, 0, 0.05);
+        cursor: default;
+    }
+    .import-item-error:hover {
+        background: rgba(204, 0, 0, 0.05);
+        border-color: #cc0000;
     }
     .import-item-error .error-icon {
         color: #cc0000;
         font-weight: bold;
     }
     .import-item-error .import-item-title {
-        color: var(--muted);
+        color: var(--text-tertiary);
     }
     .error-section {
         margin-top: 1.5rem;
         padding-top: 1rem;
-        border-top: 1px solid var(--border);
+        border-top: 1px solid var(--forest-300);
     }
     .error-section h4 {
         color: #cc0000;
@@ -181,12 +194,13 @@
     .select-actions button {
         background: none;
         border: none;
-        color: var(--accent);
+        color: var(--moss-500);
         cursor: pointer;
         padding: 0;
         font-size: 0.875rem;
     }
     .select-actions button:hover {
+        color: var(--moss-600);
         text-decoration: underline;
     }
     .loading {
@@ -197,8 +211,8 @@
         display: inline-block;
         width: 24px;
         height: 24px;
-        border: 3px solid var(--border);
-        border-top-color: var(--accent);
+        border: 3px solid var(--forest-300);
+        border-top-color: var(--moss-500);
         border-radius: 50%;
         animation: spin 1s linear infinite;
     }

@@ -1,14 +1,19 @@
-{{define "title"}}Login - Feeder{{end}}
+{{define "title"}}Login - Solanum{{end}}
 
 {{define "content"}}
-<h1>Feeder</h1>
-<p>Sign in with your AT Protocol account (Bluesky, etc.)</p>
-
-<form action="/oauth/login" method="POST">
-    <div class="form-group">
-        <label for="handle">Handle</label>
-        <input type="text" id="handle" name="handle" placeholder="yourname.bsky.social" required autofocus>
+<div style="max-width: 400px; margin: 4rem auto; text-align: center;">
+    <div style="font-size: 3rem; margin-bottom: 1rem;">🌿</div>
+    <h1 style="color: var(--text-primary); margin-bottom: 0.5rem;">Welcome to Solanum</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 2rem;">Sign in with your AT Protocol account</p>
+    
+    <div class="card" style="text-align: left;">
+        <form action="/oauth/login" method="POST">
+            <div class="form-group">
+                <label for="handle">Handle</label>
+                <input type="text" id="handle" name="handle" placeholder="yourname.bsky.social" required autofocus class="input">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
+        </form>
     </div>
-    <button type="submit" class="btn">Sign In</button>
-</form>
+</div>
 {{end}}

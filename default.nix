@@ -6,11 +6,6 @@ buildGoModule {
   src = ./.;
   vendorHash = "sha256-hhJFOBNUx5Y/NukZ/5VNmbFGXL7fd50v0e1kVk0yRQM=";
 
-  # nativeBuildInputs = [ tailwindcss_4 ];
-  # preBuild = ''
-  #   tailwindcss -i static/css/style.css -o static/css/output.css --minify
-  # '';
-
   buildPhase = ''
     runHook preBuild
     go build -o solanum cmd/solanum/main.go
@@ -49,7 +44,7 @@ buildGoModule {
   '';
 
   meta = with lib; {
-    description = "Solanum - Coffee brew tracker";
+    description = "Solanum - RSS feed aggregator and reading list";
     license = licenses.mit;
     platforms = platforms.linux;
     mainProgram = "solanum";

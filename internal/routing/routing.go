@@ -2,6 +2,7 @@
 package routing
 
 import (
+	"io/fs"
 	"net/http"
 
 	"github.com/patricktcoakley/solanum/internal/web/handlers"
@@ -20,7 +21,12 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Static files with proper MIME type handling
-	staticHandler := http.StripPrefix("/static/", http.FileServerFS(public.StaticFS))
+	// Create a sub-filesystem from the 'static' directory within StaticFS
+	staticFS, err := fs.Sub(public.StaticFS, "static")
+	if err != nil {
+		panic("failed to create static sub-filesystem: " + err.Error())
+	}
+	staticHandler := http.StripPrefix("/static/", http.FileServerFS(staticFS))
 	mux.HandleFunc("GET /static/", func(w http.ResponseWriter, r *http.Request) {
 		staticHandler.ServeHTTP(w, r)
 	})

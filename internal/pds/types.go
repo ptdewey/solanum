@@ -261,3 +261,30 @@ type ReadingArchiveItem struct {
 	Description string    `json:"description,omitempty"` // Shortened to 100-120 chars
 	ArchivedAt  time.Time `json:"archivedAt"`
 }
+
+// Profile represents a user's Bluesky profile.
+type Profile struct {
+	DID         string `json:"did"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"displayName,omitempty"`
+	Avatar      string `json:"avatar,omitempty"`
+}
+
+// ProfileResponse is the response from app.bsky.actor.getProfile.
+type ProfileResponse struct {
+	DID         string `json:"did"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"displayName,omitempty"`
+	Avatar      string `json:"avatar,omitempty"`
+	// Additional fields can be added as needed
+}
+
+// ProfileRecord is the actual profile record stored in the user's PDS.
+// This is fetched via com.atproto.repo.getRecord with collection "app.bsky.actor.profile" and rkey "self".
+type ProfileRecord struct {
+	Type        string   `json:"$type"`
+	DisplayName string   `json:"displayName,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Avatar      *BlobRef `json:"avatar,omitempty"`
+	Banner      *BlobRef `json:"banner,omitempty"`
+}

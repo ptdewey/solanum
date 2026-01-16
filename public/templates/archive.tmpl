@@ -1,32 +1,33 @@
-{{define "title"}}Archive - Feeder{{end}}
+{{define "title"}}Archive - Solanum{{end}}
 
 {{define "content"}}
-<h1>Archive</h1>
-
-<p><a href="/reading-list" class="btn btn-secondary">Back to Reading List</a></p>
+<div style="margin-bottom: 1.5rem;">
+    <h1 style="margin: 0 0 1rem 0;">Archive</h1>
+    <a href="/reading-list" class="btn btn-secondary">Back to Reading List</a>
+</div>
 
 {{if .Archived}}
     {{range .Archived}}
-    <div class="card">
-        <h3 class="card-title"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a></h3>
-        <div class="card-meta">{{.URL}}</div>
+    <div class="card" style="opacity: 0.85;">
+        <h3 style="margin: 0 0 0.5rem 0;"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer" style="color: var(--text-secondary); text-decoration: none;">{{.Title}}</a></h3>
+        <div style="font-size: 0.875rem; color: var(--text-tertiary); word-break: break-all; margin-bottom: 0.5rem;">{{.URL}}</div>
         {{if .Description}}
-        <p>{{.Description}}</p>
+        <p style="margin: 0 0 0.5rem 0; color: var(--text-tertiary);">{{.Description}}</p>
         {{end}}
-        <div class="card-meta">
-            Archived {{if .ArchivedAt}}{{.ArchivedAt.Format "Jan 2, 2006"}}{{end}}
-        </div>
-        <div class="card-actions">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 0.875rem; color: var(--text-tertiary);">
+                Archived {{if .ArchivedAt}}{{.ArchivedAt.Format "Jan 2, 2006"}}{{end}}
+            </div>
             <form action="/reading-list/archive/delete" method="POST" style="display:inline"
                   onsubmit="return confirm('Delete this item permanently?')">
                 <input type="hidden" name="url" value="{{.URL}}">
-                <button type="submit" class="btn btn-danger">Delete Forever</button>
+                <button type="submit" class="btn btn-danger btn-sm">Delete Forever</button>
             </form>
         </div>
     </div>
     {{end}}
 {{else}}
-    <div class="empty">
+    <div class="empty-state">
         <p>Your archive is empty.</p>
     </div>
 {{end}}

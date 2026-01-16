@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/patricktcoakley/solanum/internal/auth"
 	"github.com/patricktcoakley/solanum/internal/feed"
 	"github.com/patricktcoakley/solanum/internal/pds"
@@ -150,18 +151,34 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get handle by resolving DID
+	// Resolve DID to get handle via AT Protocol identity resolution
 	handle := sessData.AccountDID.String() // Fallback to DID
-	// The handle would normally be resolved from identity, but for now we use DID
+	avatar := ""
 
-	if err := h.app.UserSessions.CreateSession(r.Context(), cookieID, sessData.AccountDID, handle, sessData.SessionID, 7*24*time.Hour); err != nil {
+	// Use default directory to resolve DID to handle
+	dir := identity.DefaultDirectory()
+	ident, err := dir.LookupDID(r.Context(), sessData.AccountDID)
+	if err != nil {
+		h.app.Logger.Warn().Err(err).Msg("failed to resolve DID to handle, using DID as fallback")
+	} else if ident != nil && ident.Handle.String() != "" && ident.Handle.String() != "handle.invalid" {
+		handle = ident.Handle.String()
+	}
+
+	// Fetch user profile from their PDS to get avatar
+	apiClient := sess.APIClient()
+	pdsClient := pds.NewClient(apiClient, sessData.AccountDID)
+	profile, err := pdsClient.GetProfile(r.Context())
+	if err != nil {
+		h.app.Logger.Warn().Err(err).Msg("failed to fetch user profile from PDS, proceeding without avatar")
+	} else if profile != nil {
+		avatar = profile.Avatar
+	}
+
+	if err := h.app.UserSessions.CreateSession(r.Context(), cookieID, sessData.AccountDID, handle, avatar, sessData.SessionID, 7*24*time.Hour); err != nil {
 		h.app.Logger.Error().Err(err).Msg("create user session failed")
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
-
-	// Suppress unused variable warning
-	_ = sess
 
 	// Set session cookie
 	// Note: SameSite=Lax works for OAuth callback redirects (which are GET requests)

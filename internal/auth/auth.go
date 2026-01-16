@@ -180,6 +180,7 @@ func (s *SQLiteAuthStore) CleanupExpiredRequests(ctx context.Context) error {
 type Session struct {
 	DID       syntax.DID
 	Handle    string
+	Avatar    string // User's profile picture URL
 	SessionID string // The OAuth session ID from indigo
 }
 
@@ -204,6 +205,7 @@ func (s *UserSessionStore) migrate() error {
 			cookie_id TEXT PRIMARY KEY,
 			did TEXT NOT NULL,
 			handle TEXT NOT NULL,
+			avatar TEXT DEFAULT '',
 			oauth_session_id TEXT NOT NULL,
 			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -216,15 +218,15 @@ func (s *UserSessionStore) migrate() error {
 }
 
 // CreateSession creates a new user session.
-func (s *UserSessionStore) CreateSession(ctx context.Context, cookieID string, did syntax.DID, handle, oauthSessionID string, duration time.Duration) error {
+func (s *UserSessionStore) CreateSession(ctx context.Context, cookieID string, did syntax.DID, handle, avatar, oauthSessionID string, duration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	expiresAt := time.Now().Add(duration)
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO user_sessions (cookie_id, did, handle, oauth_session_id, expires_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, cookieID, did.String(), handle, oauthSessionID, expiresAt)
+		INSERT INTO user_sessions (cookie_id, did, handle, avatar, oauth_session_id, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, cookieID, did.String(), handle, avatar, oauthSessionID, expiresAt)
 
 	return err
 }
@@ -234,12 +236,12 @@ func (s *UserSessionStore) GetSession(ctx context.Context, cookieID string) (*Se
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var didStr, handle, oauthSessionID string
+	var didStr, handle, avatar, oauthSessionID string
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT did, handle, oauth_session_id FROM user_sessions
+		SELECT did, handle, avatar, oauth_session_id FROM user_sessions
 		WHERE cookie_id = ? AND expires_at > CURRENT_TIMESTAMP
-	`, cookieID).Scan(&didStr, &handle, &oauthSessionID)
+	`, cookieID).Scan(&didStr, &handle, &avatar, &oauthSessionID)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrSessionNotFound
@@ -256,6 +258,7 @@ func (s *UserSessionStore) GetSession(ctx context.Context, cookieID string) (*Se
 	return &Session{
 		DID:       did,
 		Handle:    handle,
+		Avatar:    avatar,
 		SessionID: oauthSessionID,
 	}, nil
 }

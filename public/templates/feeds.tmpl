@@ -1,11 +1,13 @@
 {{define "title"}}Feeds - Solanum{{end}}
 
 {{define "content"}}
-<h1>Your Feeds</h1>
-<p class="page-actions">
-    <button class="btn" onclick="document.getElementById('add-modal').classList.add('show')">Add Feed</button>
-    <a href="/feeds/import" class="btn btn-secondary">Import Feeds</a>
-</p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h1 style="margin: 0;">Your Feeds</h1>
+    <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-primary" onclick="document.getElementById('add-modal').classList.add('show')">Add Feed</button>
+        <a href="/feeds/import" class="btn btn-secondary">Import Feeds</a>
+    </div>
+</div>
 
 <!-- Modal for adding feeds -->
 <div id="add-modal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
@@ -17,43 +19,38 @@
         <form action="/feeds" method="POST">
             <div class="form-group">
                 <label for="url">Feed URL</label>
-                <input type="url" id="url" name="url" placeholder="https://example.com/feed.xml" required autofocus>
+                <input type="url" id="url" name="url" placeholder="https://example.com/feed.xml" required autofocus class="input">
             </div>
-            <button type="submit" class="btn">Add Feed</button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('show')">Cancel</button>
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                <button type="submit" class="btn btn-primary">Add Feed</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('show')">Cancel</button>
+            </div>
         </form>
     </div>
 </div>
 
-<style>
-.btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    height: auto;
-    line-height: 1.2;
-}
-</style>
-
 {{if .Feeds}}
     {{range .Feeds}}
     <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-            <h3 class="card-title" style="margin: 0; flex: 1;">
-                <a href="/feeds/{{.RKey}}/view">{{.Title}}</a>
-            </h3>
-            <form action="/feeds/{{.RKey}}/delete" method="POST" style="display:inline" 
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+            <div style="flex: 1; min-width: 0;">
+                <h3 style="margin: 0 0 0.5rem 0;">
+                    <a href="/feeds/{{.RKey}}/view" style="color: var(--text-primary); text-decoration: none;">{{.Title}}</a>
+                </h3>
+                <div style="font-size: 0.875rem; color: var(--text-tertiary); word-break: break-all;">{{.URL}}</div>
+                {{if .Description}}
+                <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary);">{{.Description}}</p>
+                {{end}}
+            </div>
+            <form action="/feeds/{{.RKey}}/delete" method="POST" style="flex-shrink: 0;" 
                   onsubmit="return confirm('Delete this feed?')">
                 <button type="submit" class="btn btn-danger btn-sm" title="Delete feed">✕</button>
             </form>
         </div>
-        <div class="card-meta">{{.URL}}</div>
-        {{if .Description}}
-        <p>{{.Description}}</p>
-        {{end}}
     </div>
     {{end}}
 {{else}}
-    <div class="empty">
+    <div class="empty-state">
         <p>No feeds yet. <a href="#" onclick="document.getElementById('add-modal').classList.add('show'); return false;">Add your first feed</a> or <a href="/feeds/import">import feeds</a>.</p>
     </div>
 {{end}}

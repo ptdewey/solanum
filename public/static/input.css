@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+@theme {
+  /* Dark Forest Green & Sepia Palette */
+  --color-forest-950: #0a1410;
+  --color-forest-900: #0f1f18;
+  --color-forest-800: #1a2e23;
+  --color-forest-700: #243d2e;
+  --color-forest-600: #2e4c39;
+  --color-forest-500: #3d6b4d;
+  --color-forest-400: #4d8661;
+  --color-forest-300: #6ba683;
+  --color-forest-200: #a1c9b0;
+  --color-forest-100: #d4e8dc;
+  
+  --color-sepia-950: #1a1410;
+  --color-sepia-900: #2d2419;
+  --color-sepia-800: #3f3422;
+  --color-sepia-700: #52442b;
+  --color-sepia-600: #6e5d3d;
+  --color-sepia-500: #8b7750;
+  --color-sepia-400: #a89163;
+  --color-sepia-300: #c5ac7b;
+  --color-sepia-200: #dcc89b;
+  --color-sepia-100: #f0e4c5;
+  
+  --color-moss-600: #3a5a3a;
+  --color-moss-500: #4a7a4a;
+  --color-moss-400: #5a9a5a;
+  
+  /* Base colors */
+  --color-bg-primary: var(--color-forest-950);
+  --color-bg-secondary: var(--color-forest-900);
+  --color-bg-tertiary: var(--color-forest-800);
+  
+  --color-text-primary: var(--color-sepia-100);
+  --color-text-secondary: var(--color-sepia-200);
+  --color-text-muted: var(--color-sepia-300);
+  
+  --color-border: var(--color-forest-700);
+  --color-border-hover: var(--color-forest-600);
+  
+  --color-accent-primary: var(--color-moss-500);
+  --color-accent-hover: var(--color-moss-400);
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+}
+
+/* Base styles */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-forest-950 text-sepia-100 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-sepia-100 font-semibold tracking-tight;
+  }
+  
+  h1 {
+    @apply text-3xl md:text-4xl mb-6;
+  }
+  
+  h2 {
+    @apply text-2xl md:text-3xl mb-4;
+  }
+  
+  h3 {
+    @apply text-xl md:text-2xl mb-3;
+  }
+  
+  a {
+    @apply text-moss-400 hover:text-moss-300 transition-colors duration-200;
+  }
+}
+
+/* Component styles */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-2.5 
+           rounded-lg font-medium transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-forest-950
+           disabled:opacity-50 disabled:cursor-not-allowed
+           shadow-sm hover:shadow-md;
+  }
+  
+  .btn-primary {
+    @apply btn bg-moss-500 hover:bg-moss-400 text-forest-950
+           focus:ring-moss-500;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-forest-700 hover:bg-forest-600 text-sepia-100
+           focus:ring-forest-600;
+  }
+  
+  .btn-danger {
+    @apply btn bg-red-900 hover:bg-red-800 text-sepia-100
+           focus:ring-red-800;
+  }
+  
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-forest-800 text-sepia-200
+           shadow-none hover:shadow-none
+           focus:ring-forest-700;
+  }
+  
+  .btn-sm {
+    @apply px-4 py-1.5 text-sm;
+  }
+  
+  .card {
+    @apply bg-forest-900 border border-forest-700 rounded-xl p-6
+           shadow-md hover:shadow-lg hover:border-forest-600
+           transition-all duration-200;
+  }
+  
+  .card-flat {
+    @apply card hover:shadow-md;
+  }
+  
+  .input {
+    @apply w-full px-4 py-2.5 bg-forest-800 border border-forest-700
+           rounded-lg text-sepia-100 placeholder-sepia-400
+           focus:outline-none focus:ring-2 focus:ring-moss-500 focus:border-transparent
+           transition-all duration-200;
+  }
+  
+  .textarea {
+    @apply input min-h-[100px] resize-y;
+  }
+  
+  .label {
+    @apply block text-sm font-medium text-sepia-200 mb-2;
+  }
+  
+  .nav-link {
+    @apply text-sepia-200 hover:text-sepia-100 hover:bg-forest-800
+           px-4 py-2 rounded-lg transition-all duration-200
+           font-medium;
+  }
+  
+  .nav-link-active {
+    @apply nav-link bg-forest-800 text-moss-400;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
+           bg-forest-800 text-sepia-200 border border-forest-700;
+  }
+  
+  .divider {
+    @apply border-t border-forest-700 my-6;
+  }
+  
+  .empty-state {
+    @apply text-center py-12 text-sepia-400;
+  }
+  
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-40
+           transition-opacity duration-200;
+  }
+  
+  .modal-content {
+    @apply bg-forest-900 border border-forest-700 rounded-xl
+           shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto;
+  }
+  
+  .feed-item {
+    @apply card hover:border-moss-600 group cursor-pointer;
+  }
+  
+  .feed-item-title {
+    @apply text-lg font-semibold text-sepia-100 mb-2
+           group-hover:text-moss-400 transition-colors duration-200;
+  }
+  
+  .feed-item-meta {
+    @apply text-sm text-sepia-400 mb-3;
+  }
+  
+  .feed-item-description {
+    @apply text-sepia-300 line-clamp-3 mb-4;
+  }
+  
+  .tag {
+    @apply inline-block px-2.5 py-1 text-xs font-medium rounded-md
+           bg-forest-800 text-sepia-300 border border-forest-700;
+  }
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-moss-400 to-sepia-300 bg-clip-text text-transparent;
+  }
+  
+  .bg-gradient-forest {
+    @apply bg-gradient-to-br from-forest-900 via-forest-800 to-forest-900;
+  }
+  
+  .shadow-glow {
+    box-shadow: 0 0 20px rgba(74, 122, 74, 0.3);
+  }
+}

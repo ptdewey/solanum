@@ -719,6 +719,46 @@ func (c *Client) GetArchivedItems(ctx context.Context) ([]ReadingArchiveItem, er
 	return archiveData.Items, nil
 }
 
+// GetProfile retrieves the user's Bluesky profile from their PDS.
+// This fetches the profile record directly from the PDS without requiring AppView permissions.
+func (c *Client) GetProfile(ctx context.Context) (*Profile, error) {
+	params := map[string]any{
+		"repo":       c.did.String(),
+		"collection": "app.bsky.actor.profile",
+		"rkey":       "self",
+	}
+
+	var resp getRecordResponse
+	nsid := syntax.NSID("com.atproto.repo.getRecord")
+	if err := c.api.Get(ctx, nsid, params, &resp); err != nil {
+		return nil, fmt.Errorf("get profile record: %w", err)
+	}
+
+	var profileRecord ProfileRecord
+	if err := json.Unmarshal(resp.Value, &profileRecord); err != nil {
+		return nil, fmt.Errorf("unmarshal profile record: %w", err)
+	}
+
+	// Extract avatar URL from the blob reference if present
+	avatarURL := ""
+	if profileRecord.Avatar != nil && profileRecord.Avatar.Ref.Link != "" {
+		// Construct the blob URL: https://bsky.social/xrpc/com.atproto.sync.getBlob?did=X&cid=Y
+		// But we need to know the PDS endpoint. For now, use the api client's host
+		// The avatar blob CID can be accessed via: {pds}/xrpc/com.atproto.sync.getBlob?did={did}&cid={cid}
+		avatarURL = fmt.Sprintf("%s/xrpc/com.atproto.sync.getBlob?did=%s&cid=%s",
+			c.api.Host,
+			c.did.String(),
+			profileRecord.Avatar.Ref.Link)
+	}
+
+	return &Profile{
+		DID:         c.did.String(),
+		Handle:      "", // Handle not in profile record, would need separate lookup
+		Avatar:      avatarURL,
+		DisplayName: profileRecord.DisplayName,
+	}, nil
+}
+
 // Record represents a generic PDS record response.
 type record struct {
 	URI   string          `json:"uri"`
