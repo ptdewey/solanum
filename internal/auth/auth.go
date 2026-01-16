@@ -311,7 +311,12 @@ func (s *OAuthService) StartAuthFlow(ctx context.Context, identifier string) (st
 	// Clean up identifier (remove @ prefix if present)
 	identifier = strings.TrimPrefix(identifier, "@")
 
-	return s.app.StartAuthFlow(ctx, identifier)
+	authURL, err := s.app.StartAuthFlow(ctx, identifier)
+	if err != nil {
+		return "", fmt.Errorf("indigo StartAuthFlow failed: %w", err)
+	}
+
+	return authURL, nil
 }
 
 // ProcessCallback handles the OAuth callback and returns session data.

@@ -6,14 +6,34 @@
     <h1 style="color: var(--text-primary); margin-bottom: 0.5rem;">Welcome to Solanum</h1>
     <p style="color: var(--text-secondary); margin-bottom: 2rem;">Sign in with your AT Protocol account</p>
     
+    {{if .Error}}
+    <div style="background: #fee; border: 1px solid #fcc; padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; color: #c33;">
+        <strong>Error:</strong> {{.Error}}
+    </div>
+    {{end}}
+    
     <div class="card" style="text-align: left;">
-        <form action="/oauth/login" method="POST">
+        <form action="/oauth/login" method="POST" id="loginForm">
             <div class="form-group">
                 <label for="handle">Handle</label>
                 <input type="text" id="handle" name="handle" placeholder="yourname.bsky.social" required autofocus class="input">
             </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
+            <button type="submit" class="btn btn-primary" style="width: 100%;" id="signInBtn">Sign In</button>
         </form>
     </div>
+    
+    <script>
+        // Add client-side debugging
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            console.log('Form submitted');
+            const handle = document.getElementById('handle').value;
+            console.log('Handle:', handle);
+            
+            // Disable button to prevent double-submit
+            const btn = document.getElementById('signInBtn');
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+        });
+    </script>
 </div>
 {{end}}

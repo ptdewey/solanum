@@ -47,17 +47,6 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// CSRF creates CSRF protection middleware using Go 1.25's http.CrossOriginProtection.
-func CSRF(trustedOrigins ...string) func(http.Handler) http.Handler {
-	// Go 1.25 provides http.CrossOriginProtection
-	cop := &http.CrossOriginProtection{}
-	for _, origin := range trustedOrigins {
-		cop.AddTrustedOrigin(origin)
-	}
-
-	return cop.Handler
-}
-
 // Chain combines multiple middleware functions.
 func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(final http.Handler) http.Handler {
@@ -91,15 +80,16 @@ func SecurityHeaders(isProduction bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Content Security Policy
+			// Note: form-action allows https: for OAuth redirects to external authorization servers
 			csp := "default-src 'self'; " +
 				"script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; " +
 				"style-src 'self' 'unsafe-inline'; " +
 				"img-src 'self' data: https:; " +
 				"font-src 'self'; " +
-				"connect-src 'self'; " +
+				"connect-src 'self'; https:" + // Allow connections to external APIs (OAuth, PDS)
 				"frame-ancestors 'none'; " +
 				"base-uri 'self'; " +
-				"form-action 'self'"
+				"form-action 'self' https:" // Allow form submissions to external OAuth servers
 			w.Header().Set("Content-Security-Policy", csp)
 
 			// HSTS - only set in production

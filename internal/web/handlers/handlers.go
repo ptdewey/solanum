@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
@@ -57,11 +58,34 @@ func (h *AuthHandler) ClientMetadata(w http.ResponseWriter, r *http.Request) {
 
 // LoginPage renders the login form.
 func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+	h.app.Logger.Info().
+		Str("method", r.Method).
+		Str("remote_addr", r.RemoteAddr).
+		Str("user_agent", r.UserAgent()).
+		Msg("LoginPage called")
+
 	// Check if already logged in
 	session := getSession(r.Context())
 	if session != nil {
+		h.app.Logger.Info().Str("did", session.DID.String()).Msg("user already logged in, redirecting to home")
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
+	}
+
+	// Check for error in query string
+	errorMsg := ""
+	if errCode := r.URL.Query().Get("error"); errCode != "" {
+		h.app.Logger.Warn().Str("error_code", errCode).Msg("login page error")
+		switch errCode {
+		case "invalid_form":
+			errorMsg = "Invalid form data. Please try again."
+		case "missing_handle":
+			errorMsg = "Please enter your handle."
+		case "auth_failed":
+			errorMsg = "Failed to start authentication. Please try again."
+		default:
+			errorMsg = "An error occurred. Please try again."
+		}
 	}
 
 	tmpl, ok := h.app.Templates["login.tmpl"]
@@ -70,7 +94,12 @@ func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	if err := tmpl.ExecuteTemplate(w, "base", nil); err != nil {
+
+	data := map[string]interface{}{
+		"Error": errorMsg,
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		h.app.Logger.Error().Err(err).Msg("render login page")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -78,23 +107,54 @@ func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // StartAuth initiates the OAuth flow.
 func (h *AuthHandler) StartAuth(w http.ResponseWriter, r *http.Request) {
+	h.app.Logger.Info().
+		Str("method", r.Method).
+		Str("remote_addr", r.RemoteAddr).
+		Str("user_agent", r.UserAgent()).
+		Str("content_type", r.Header.Get("Content-Type")).
+		Str("origin", r.Header.Get("Origin")).
+		Str("referer", r.Referer()).
+		Msg("StartAuth called")
+
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		h.app.Logger.Error().Err(err).Msg("failed to parse form")
+		// Redirect back to login with error
+		http.Redirect(w, r, "/login?error=invalid_form", http.StatusFound)
 		return
 	}
 
 	handle := strings.TrimSpace(r.FormValue("handle"))
+	h.app.Logger.Info().
+		Str("handle", handle).
+		Int("form_values", len(r.Form)).
+		Interface("form", r.Form).
+		Msg("parsed handle from form")
+
 	if handle == "" {
-		http.Error(w, "Handle is required", http.StatusBadRequest)
+		h.app.Logger.Warn().Msg("handle is empty")
+		// Redirect back to login with error
+		http.Redirect(w, r, "/login?error=missing_handle", http.StatusFound)
 		return
 	}
 
+	h.app.Logger.Info().Str("handle", handle).Msg("calling OAuth.StartAuthFlow")
 	authURL, err := h.app.OAuth.StartAuthFlow(r.Context(), handle)
 	if err != nil {
-		h.app.Logger.Error().Err(err).Str("handle", handle).Msg("start auth failed")
-		http.Error(w, "Failed to start authentication", http.StatusInternalServerError)
+		h.app.Logger.Error().
+			Err(err).
+			Str("handle", handle).
+			Str("error_detail", fmt.Sprintf("%+v", err)).
+			Msg("start auth failed")
+		// Redirect back to login with error
+		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
 		return
 	}
+
+	h.app.Logger.Info().
+		Str("handle", handle).
+		Str("auth_url", authURL).
+		Int("auth_url_len", len(authURL)).
+		Msg("successfully got auth URL, redirecting to OAuth provider")
 
 	http.Redirect(w, r, authURL, http.StatusFound)
 }

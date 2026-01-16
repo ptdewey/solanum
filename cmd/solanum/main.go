@@ -187,18 +187,11 @@ func main() {
 	// Setup routes
 	mux := routing.SetupRoutes(app)
 
-	// Determine CSRF trusted origin
-	csrfOrigin := publicURL
-	if csrfOrigin == "" {
-		csrfOrigin = fmt.Sprintf("http://127.0.0.1:%s", port)
-	}
-
-	// Apply middleware
+	// Apply middleware (no global CSRF - it's applied per-route in routing.go)
 	handler := middleware.Chain(
 		middleware.Recover(log.Logger),
 		middleware.LoggingMiddleware(log.Logger),
 		middleware.SecurityHeaders(secureCookies),
-		middleware.CSRF(csrfOrigin),
 		middleware.Auth(userSessions),
 	)(mux)
 

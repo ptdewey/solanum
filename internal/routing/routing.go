@@ -20,6 +20,9 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 	// Setup router using stdlib http.ServeMux (Go 1.22+ with method routing)
 	mux := http.NewServeMux()
 
+	// Create CrossOriginProtection for CSRF protection on state-changing routes
+	cop := http.NewCrossOriginProtection()
+
 	// Static files with proper MIME type handling
 	// Create a sub-filesystem from the 'static' directory within StaticFS
 	staticFS, err := fs.Sub(public.StaticFS, "static")
@@ -35,38 +38,38 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 	mux.HandleFunc("GET /client-metadata.json", authHandler.ClientMetadata)
 	mux.HandleFunc("GET /.well-known/oauth-client-metadata", authHandler.ClientMetadata)
 
-	// Auth routes
+	// Auth routes (OAuth flow doesn't need CSRF - uses state parameter and PKCE)
 	mux.HandleFunc("GET /login", authHandler.LoginPage)
 	mux.HandleFunc("POST /oauth/login", authHandler.StartAuth)
 	mux.HandleFunc("GET /oauth/callback", authHandler.Callback)
-	mux.HandleFunc("POST /oauth/logout", authHandler.Logout)
+	mux.Handle("POST /oauth/logout", cop.Handler(http.HandlerFunc(authHandler.Logout)))
 
 	// Protected routes - Home
 	mux.HandleFunc("GET /", homeHandler.Home)
 
-	// Protected routes - Feeds
+	// Protected routes - Feeds (GET requests don't need CSRF)
 	mux.HandleFunc("GET /feeds", feedHandler.ListFeeds)
-	mux.HandleFunc("POST /feeds", feedHandler.AddFeed)
+	mux.Handle("POST /feeds", cop.Handler(http.HandlerFunc(feedHandler.AddFeed)))
 	mux.HandleFunc("GET /feeds/import", feedHandler.ImportPage)
 	mux.HandleFunc("GET /feeds/import/leaflet/fetch", feedHandler.FetchLeafletFeeds)
-	mux.HandleFunc("POST /feeds/import/leaflet/import", feedHandler.ImportSelectedLeafletFeeds)
-	mux.HandleFunc("POST /feeds/refresh", feedHandler.RefreshFeeds)
+	mux.Handle("POST /feeds/import/leaflet/import", cop.Handler(http.HandlerFunc(feedHandler.ImportSelectedLeafletFeeds)))
+	mux.Handle("POST /feeds/refresh", cop.Handler(http.HandlerFunc(feedHandler.RefreshFeeds)))
 	mux.HandleFunc("GET /feeds/cache", feedHandler.GetFeedCache)
 	mux.HandleFunc("GET /feeds/cache/debug", feedHandler.DebugFeedCache)
-	mux.HandleFunc("POST /feeds/{rkey}/delete", feedHandler.DeleteFeed)
+	mux.Handle("POST /feeds/{rkey}/delete", cop.Handler(http.HandlerFunc(feedHandler.DeleteFeed)))
 	mux.HandleFunc("GET /feeds/{rkey}/view", homeHandler.FeedView)
 
 	// Protected routes - Feed Entry Actions
-	mux.HandleFunc("POST /entries/remove", feedHandler.RemoveEntry)
-	mux.HandleFunc("POST /entries/mark-read", feedHandler.MarkEntryAsRead)
+	mux.Handle("POST /entries/remove", cop.Handler(http.HandlerFunc(feedHandler.RemoveEntry)))
+	mux.Handle("POST /entries/mark-read", cop.Handler(http.HandlerFunc(feedHandler.MarkEntryAsRead)))
 
 	// Protected routes - Reading List
 	mux.HandleFunc("GET /reading-list", readingListHandler.ListItems)
 	mux.HandleFunc("GET /reading-list/archive", readingListHandler.ArchivePage)
-	mux.HandleFunc("POST /reading-list", readingListHandler.AddItem)
-	mux.HandleFunc("POST /reading-list/{rkey}/archive", readingListHandler.ArchiveItem)
-	mux.HandleFunc("POST /reading-list/{rkey}/delete", readingListHandler.DeleteItem)
-	mux.HandleFunc("POST /reading-list/archive/delete", readingListHandler.DeleteArchivedItem)
+	mux.Handle("POST /reading-list", cop.Handler(http.HandlerFunc(readingListHandler.AddItem)))
+	mux.Handle("POST /reading-list/{rkey}/archive", cop.Handler(http.HandlerFunc(readingListHandler.ArchiveItem)))
+	mux.Handle("POST /reading-list/{rkey}/delete", cop.Handler(http.HandlerFunc(readingListHandler.DeleteItem)))
+	mux.Handle("POST /reading-list/archive/delete", cop.Handler(http.HandlerFunc(readingListHandler.DeleteArchivedItem)))
 
 	return mux
 }
