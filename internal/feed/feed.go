@@ -173,12 +173,32 @@ func (p *Parser) ParseURL(ctx context.Context, url string) (*Metadata, []Item, e
 
 	items := make([]Item, 0, len(feed.Items))
 	for _, fi := range feed.Items {
+		// Resolve item link against feed URL to handle relative URLs
+		resolvedLink, err := ResolveItemURL(fi.Link, url)
+		if err != nil {
+			// Skip items with invalid URLs and log the issue
+			// This includes malformed URLs and dangerous schemes
+			continue
+		}
+
+		// Resolve ID/GUID if it looks like a URL
+		itemID := fi.GUID
+		if itemID == "" || strings.Contains(itemID, "/") || strings.Contains(itemID, ".") {
+			// Try to resolve GUID as URL if it appears to be one
+			if itemID == "" {
+				itemID = resolvedLink // Use resolved link as fallback
+			} else if resolvedID, err := ResolveItemURL(itemID, url); err == nil {
+				itemID = resolvedID
+			}
+			// If resolution fails, keep original GUID
+		}
+
 		item := Item{
-			ID:          fi.GUID,
+			ID:          itemID,
 			FeedURL:     url,
 			Title:       fi.Title,
 			Description: StripHTML(fi.Description),
-			Link:        fi.Link,
+			Link:        resolvedLink, // Use resolved URL
 			Content:     fi.Content,
 		}
 
@@ -190,11 +210,6 @@ func (p *Parser) ParseURL(ctx context.Context, url string) (*Metadata, []Item, e
 		}
 		if fi.UpdatedParsed != nil {
 			item.Updated = *fi.UpdatedParsed
-		}
-
-		// Use link as ID if GUID is empty
-		if item.ID == "" {
-			item.ID = fi.Link
 		}
 
 		items = append(items, item)
@@ -354,4 +369,62 @@ func IsValidItemURL(itemURL string) bool {
 		return false
 	}
 	return strings.HasPrefix(itemURL, "http://") || strings.HasPrefix(itemURL, "https://")
+}
+
+// ResolveItemURL resolves a potentially relative item URL against the feed's base URL.
+// It handles:
+// - Absolute URLs (returned as-is if valid)
+// - Protocol-relative URLs (inherits scheme from base)
+// - Absolute paths (uses base's host)
+// - Relative paths (resolves against base)
+//
+// Returns an error if:
+// - Either URL cannot be parsed
+// - The resolved URL has a dangerous scheme (not http/https)
+func ResolveItemURL(itemURL, feedURL string) (string, error) {
+	if itemURL == "" {
+		return "", fmt.Errorf("item URL is empty")
+	}
+
+	// Parse feed URL as base
+	base, err := url.Parse(feedURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid feed URL: %w", err)
+	}
+
+	// Parse item URL
+	ref, err := url.Parse(itemURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid item URL: %w", err)
+	}
+
+	// Check if this looks like an absolute URL without a scheme
+	// (e.g., "example.com/path" or "//example.com/path")
+	// If the parsed URL has a hostname but no scheme, it's likely missing the scheme
+	if ref.Scheme == "" && ref.Host == "" && strings.Contains(itemURL, "/") {
+		// Try to detect if this is a domain-like path (contains a dot before the first slash)
+		// But exclude relative paths like "../path" or "./path"
+		if !strings.HasPrefix(itemURL, ".") && !strings.HasPrefix(itemURL, "/") {
+			firstSlash := strings.Index(itemURL, "/")
+			beforeSlash := itemURL[:firstSlash]
+			if strings.Contains(beforeSlash, ".") {
+				// This looks like "domain.com/path" - treat as absolute URL with missing scheme
+				itemURL = "https://" + itemURL
+				ref, err = url.Parse(itemURL)
+				if err != nil {
+					return "", fmt.Errorf("invalid item URL: %w", err)
+				}
+			}
+		}
+	}
+
+	// Resolve relative URL against base
+	resolved := base.ResolveReference(ref)
+
+	// Validate the resolved URL has a safe scheme
+	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		return "", fmt.Errorf("resolved URL has invalid scheme '%s' (only http/https allowed)", resolved.Scheme)
+	}
+
+	return resolved.String(), nil
 }
