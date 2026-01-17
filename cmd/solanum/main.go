@@ -163,7 +163,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to parse base template")
 	}
 
-	pages := []string{"login.tmpl", "home.tmpl", "feeds.tmpl", "reading_list.tmpl", "archive.tmpl", "import.tmpl"}
+	pages := []string{"login.tmpl", "home.tmpl", "feeds.tmpl", "reading_list.tmpl", "archive.tmpl", "import.tmpl", "profile.tmpl"}
 	templates := make(map[string]*template.Template)
 	for _, page := range pages {
 		tmpl, err := template.Must(baseTemplate.Clone()).ParseFS(public.TemplatesFS, "templates/"+page)

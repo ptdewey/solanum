@@ -1350,6 +1350,41 @@ func (h *ReadingListHandler) DeleteArchivedItem(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, "/reading-list/archive", http.StatusFound)
 }
 
+// ProfileHandler handles profile page requests.
+type ProfileHandler struct {
+	app *App
+}
+
+// NewProfileHandler creates a new profile handler.
+func NewProfileHandler(app *App) *ProfileHandler {
+	return &ProfileHandler{app: app}
+}
+
+// ProfilePage shows the user's profile page.
+func (h *ProfileHandler) ProfilePage(w http.ResponseWriter, r *http.Request) {
+	session := getSession(r.Context())
+	if session == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Session": session,
+	}
+
+	tmpl, ok := h.app.Templates["profile.tmpl"]
+	if !ok {
+		h.app.Logger.Error().Msg("profile template not found")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+		h.app.Logger.Error().Err(err).Msg("render profile page")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
 // HomeHandler shows the home page with recent feed items.
 type HomeHandler struct {
 	app *App

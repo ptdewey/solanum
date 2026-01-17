@@ -119,16 +119,38 @@
     gap: 0.5rem;
 }
 
-@media (max-width: 600px) {
-    .feed-item-header {
-        flex-wrap: wrap;
-    }
-    
+/* Desktop: buttons stay in header */
+@media (min-width: 769px) {
     .entry-actions {
-        width: 100%;
-        justify-content: flex-start;
+        display: flex;
     }
 }
+
+/* Mobile: buttons move below content */
+@media (max-width: 768px) {
+    .feed-item-header .entry-actions {
+        display: none;
+    }
+    
+    .entry-actions-mobile {
+        display: flex !important;
+        width: 100%;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .entry-actions-mobile .btn {
+        flex: 1;
+    }
+}
+
+/* Hide mobile actions on desktop */
+@media (min-width: 769px) {
+    .entry-actions-mobile {
+        display: none !important;
+    }
+}
+
 </style>
 
 <script>
@@ -394,6 +416,28 @@ function renderItems() {
                 ${formattedDate}
             </div>
             ${item.description ? `<p class="feed-item-description">${escapeHtml(item.description)}</p>` : ''}
+            
+            <!-- Mobile action buttons (below description) -->
+            <div class="entry-actions-mobile">
+                <button 
+                    class="btn btn-ghost btn-sm"
+                    onclick="markAsRead('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
+                    title="Mark as read">
+                    ✓ Read
+                </button>
+                <button 
+                    class="btn btn-ghost btn-sm"
+                    onclick="saveForLater('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
+                    title="Save for later">
+                    📑 Save
+                </button>
+                <button 
+                    class="btn btn-danger btn-sm"
+                    onclick="removeEntry('${escapeJs(item.link)}')"
+                    title="Remove from feed">
+                    ✕
+                </button>
+            </div>
         </div>
         `;
     });

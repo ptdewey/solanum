@@ -1,0 +1,119 @@
+{{define "title"}}Profile - Solanum{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>Profile</h1>
+</div>
+
+<div class="profile-card">
+    <div class="profile-info">
+        {{if .Session.Avatar}}
+        <img src="{{.Session.Avatar}}" alt="Profile" class="profile-page-avatar" data-avatar-cache="profile" data-avatar-url="{{.Session.Avatar}}">
+        {{else}}
+        <div class="profile-page-avatar-placeholder">{{index .Session.Handle 0}}</div>
+        {{end}}
+        
+        <div class="profile-details">
+            <h2 class="profile-handle">{{.Session.Handle}}</h2>
+            <p class="profile-did">{{.Session.DID}}</p>
+        </div>
+    </div>
+    
+    <div class="divider"></div>
+    
+    <div class="profile-section">
+        <h3>Settings</h3>
+        <p class="text-muted" style="font-size: 0.875rem;">Settings coming soon...</p>
+    </div>
+    
+    <div class="divider"></div>
+    
+    <form action="/oauth/logout" method="POST">
+        <button type="submit" class="btn btn-danger" style="width: 100%;">
+            Logout
+        </button>
+    </form>
+</div>
+
+<style>
+.profile-card {
+    background-color: var(--forest-900);
+    border: 1px solid var(--forest-700);
+    border-radius: 0.75rem;
+    padding: 2rem;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.profile-info {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.profile-page-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--forest-700);
+    object-fit: cover;
+}
+
+.profile-page-avatar-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--moss-500);
+    color: var(--forest-950);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 2rem;
+    text-transform: uppercase;
+    border: 3px solid var(--forest-700);
+}
+
+.profile-details {
+    flex: 1;
+}
+
+.profile-handle {
+    font-size: 1.5rem;
+    margin: 0 0 0.5rem 0;
+    color: var(--sepia-100);
+}
+
+.profile-did {
+    font-size: 0.875rem;
+    color: var(--sepia-400);
+    font-family: monospace;
+    word-break: break-all;
+    margin: 0;
+}
+
+.profile-section {
+    margin: 1.5rem 0;
+}
+
+.profile-section h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+}
+
+@media (max-width: 768px) {
+    .profile-card {
+        padding: 1.5rem;
+    }
+    
+    .profile-info {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .profile-handle {
+        font-size: 1.25rem;
+    }
+}
+</style>
+{{end}}

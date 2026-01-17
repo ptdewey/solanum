@@ -16,6 +16,7 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 	feedHandler := handlers.NewFeedHandler(app)
 	readingListHandler := handlers.NewReadingListHandler(app)
 	homeHandler := handlers.NewHomeHandler(app)
+	profileHandler := handlers.NewProfileHandler(app)
 
 	// Setup router using stdlib http.ServeMux (Go 1.22+ with method routing)
 	mux := http.NewServeMux()
@@ -46,6 +47,9 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 
 	// Protected routes - Home
 	mux.HandleFunc("GET /", homeHandler.Home)
+
+	// Protected routes - Profile
+	mux.HandleFunc("GET /profile", profileHandler.ProfilePage)
 
 	// Protected routes - Feeds (GET requests don't need CSRF)
 	mux.HandleFunc("GET /feeds", feedHandler.ListFeeds)
