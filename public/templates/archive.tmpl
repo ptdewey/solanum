@@ -1,27 +1,73 @@
 {{define "title"}}Archive - Solanum{{end}}
 
 {{define "content"}}
-<div style="margin-bottom: 1.5rem;">
-    <h1 style="margin: 0 0 1rem 0;">Archive</h1>
-    <a href="/reading-list" class="btn btn-secondary">Back to Reading List</a>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem;">
+    <h1 style="margin: 0;">Archive</h1>
+    <a href="/reading-list" class="btn-icon btn-ghost">
+        <svg viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        <span>Back</span>
+    </a>
 </div>
+
+<style>
+/* Mobile: buttons move below content */
+@media (max-width: 900px) {
+    .archive-item .feed-item-header .entry-actions {
+        display: none;
+    }
+    
+    .archive-item .entry-actions-mobile {
+        display: flex !important;
+        width: 100%;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .archive-item .entry-actions-mobile .btn-icon {
+        flex: 1;
+    }
+}
+
+@media (min-width: 901px) {
+    .archive-item .entry-actions-mobile {
+        display: none !important;
+    }
+}
+</style>
 
 {{if .Archived}}
     {{range .Archived}}
-    <div class="card" style="opacity: 0.85;">
-        <h3 style="margin: 0 0 0.5rem 0;"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer" style="color: var(--text-secondary); text-decoration: none;">{{.Title}}</a></h3>
-        <div style="font-size: 0.875rem; color: var(--text-tertiary); word-break: break-all; margin-bottom: 0.5rem;">{{.URL}}</div>
-        {{if .Description}}
-        <p style="margin: 0 0 0.5rem 0; color: var(--text-tertiary);">{{.Description}}</p>
-        {{end}}
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 0.875rem; color: var(--text-tertiary);">
-                Archived {{if .ArchivedAt}}{{.ArchivedAt.Format "Jan 2, 2006"}}{{end}}
+    <div class="feed-item archive-item" style="opacity: 0.8;">
+        <div class="feed-item-header">
+            <h3 class="feed-item-title" style="color: var(--sepia-300);">
+                <a href="{{.URL}}" target="_blank" rel="noopener noreferrer" style="color: var(--sepia-300);">{{.Title}}</a>
+            </h3>
+            <div class="entry-actions">
+                <form action="/reading-list/archive/delete" method="POST" style="display:inline"
+                      onsubmit="return confirm('Delete this item permanently?')">
+                    <input type="hidden" name="url" value="{{.URL}}">
+                    <button type="submit" class="btn-icon-only btn-danger" title="Delete permanently">
+                        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </form>
             </div>
-            <form action="/reading-list/archive/delete" method="POST" style="display:inline"
+        </div>
+        <div class="feed-item-meta">
+            Archived {{if .ArchivedAt}}{{.ArchivedAt.Format "Jan 2, 2006"}}{{end}}
+        </div>
+        {{if .Description}}
+        <p class="feed-item-description" style="color: var(--sepia-400);">{{.Description}}</p>
+        {{end}}
+        
+        <!-- Mobile action buttons -->
+        <div class="entry-actions-mobile">
+            <form action="/reading-list/archive/delete" method="POST" style="flex: 1;"
                   onsubmit="return confirm('Delete this item permanently?')">
                 <input type="hidden" name="url" value="{{.URL}}">
-                <button type="submit" class="btn btn-danger btn-sm">Delete Forever</button>
+                <button type="submit" class="btn-icon btn-danger" style="width: 100%;">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                </button>
             </form>
         </div>
     </div>

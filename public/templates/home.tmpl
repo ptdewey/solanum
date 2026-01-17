@@ -2,10 +2,15 @@
 
 {{define "content"}}
 <div class="page-header">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h1>Recent Posts</h1>
-        <button id="refreshBtn" class="btn btn-primary" onclick="refreshFeeds()">
-            <span id="refreshIcon">↻</span> Refresh Feeds
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h1 style="margin: 0;">Recent Posts</h1>
+        <button id="refreshBtn" class="btn-icon btn-primary" onclick="refreshFeeds()">
+            <svg id="refreshIcon" viewBox="0 0 24 24">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Refresh</span>
         </button>
     </div>
     <p id="lastUpdated" class="muted" style="margin-top: 0.5rem;"></p>
@@ -84,8 +89,7 @@
     to { transform: rotate(360deg); }
 }
 
-.spinning {
-    display: inline-block;
+#refreshBtn.spinning svg {
     animation: spin 1s linear infinite;
 }
 
@@ -120,14 +124,14 @@
 }
 
 /* Desktop: buttons stay in header */
-@media (min-width: 769px) {
+@media (min-width: 901px) {
     .entry-actions {
         display: flex;
     }
 }
 
 /* Mobile: buttons move below content */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     .feed-item-header .entry-actions {
         display: none;
     }
@@ -145,7 +149,7 @@
 }
 
 /* Hide mobile actions on desktop */
-@media (min-width: 769px) {
+@media (min-width: 901px) {
     .entry-actions-mobile {
         display: none !important;
     }
@@ -244,10 +248,9 @@ async function fetchCacheFromServer() {
 
 async function refreshFeeds() {
     const btn = document.getElementById('refreshBtn');
-    const icon = document.getElementById('refreshIcon');
     
     btn.disabled = true;
-    icon.classList.add('spinning');
+    btn.classList.add('spinning');
     
     try {
         const response = await fetch('/feeds/refresh', {
@@ -276,7 +279,7 @@ async function refreshFeeds() {
         alert('Failed to refresh feeds. Please try again.');
     } finally {
         btn.disabled = false;
-        icon.classList.remove('spinning');
+        btn.classList.remove('spinning');
     }
 }
 
@@ -383,28 +386,28 @@ function renderItems() {
         const feedRKey = feedURLToRKey[item.feedURL];
         const feedLink = feedRKey ? `/feeds/${escapeHtml(feedRKey)}/view` : '#';
         
-        html += `
+html += `
         <div class="feed-item" id="entry-${escapeHtml(item.link).replace(/[^a-zA-Z0-9]/g, '_')}">
             <div class="feed-item-header">
                 <span class="feed-badge"><a href="${feedLink}">${escapeHtml(item.feedTitle)}</a></span>
                 <div class="entry-actions">
                     <button 
-                        class="btn btn-ghost btn-sm"
+                        class="btn-icon-only btn-success"
                         onclick="markAsRead('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                         title="Mark as read">
-                        ✓ Read
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
                     </button>
                     <button 
-                        class="btn btn-ghost btn-sm"
+                        class="btn-icon-only"
                         onclick="saveForLater('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                         title="Save for later">
-                        📑 Save
+                        <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
                     </button>
                     <button 
-                        class="btn btn-danger btn-sm"
+                        class="btn-icon-only btn-danger"
                         onclick="removeEntry('${escapeJs(item.link)}')"
                         title="Remove from feed">
-                        ✕
+                        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
             </div>
@@ -420,22 +423,18 @@ function renderItems() {
             <!-- Mobile action buttons (below description) -->
             <div class="entry-actions-mobile">
                 <button 
-                    class="btn btn-ghost btn-sm"
+                    class="btn-icon btn-success"
                     onclick="markAsRead('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                     title="Mark as read">
-                    ✓ Read
+                    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>Read</span>
                 </button>
                 <button 
-                    class="btn btn-ghost btn-sm"
+                    class="btn-icon btn-ghost"
                     onclick="saveForLater('${escapeJs(item.link)}', '${escapeJs(item.title)}', '${escapeJs(item.description || '')}')"
                     title="Save for later">
-                    📑 Save
-                </button>
-                <button 
-                    class="btn btn-danger btn-sm"
-                    onclick="removeEntry('${escapeJs(item.link)}')"
-                    title="Remove from feed">
-                    ✕
+                    <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                    <span>Save</span>
                 </button>
             </div>
         </div>

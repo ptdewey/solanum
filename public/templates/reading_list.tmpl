@@ -1,14 +1,18 @@
 {{define "title"}}Reading List - Solanum{{end}}
 
 {{define "content"}}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem;">
     <h1 style="margin: 0;">Reading List</h1>
     <div style="display: flex; gap: 0.5rem;">
-        <button class="btn btn-primary" onclick="document.getElementById('add-modal').classList.add('show')">
-            Add Link
+        <button class="btn-icon btn-primary" onclick="document.getElementById('add-modal').classList.add('show')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Add Link</span>
         </button>
         {{if .HasArchived}}
-        <a href="/reading-list/archive" class="btn btn-secondary">View Archive</a>
+        <a href="/reading-list/archive" class="btn-icon btn-ghost">
+            <svg viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect></svg>
+            <span>Archive</span>
+        </a>
         {{end}}
     </div>
 </div>
@@ -34,25 +38,71 @@
                 <textarea id="description" name="description" placeholder="Leave blank to fetch from page" class="input" style="min-height: 80px;"></textarea>
             </div>
             <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                <button type="submit" class="btn btn-primary">Add to Reading List</button>
+                <button type="submit" class="btn-icon btn-primary">
+                    <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>Add to Reading List</span>
+                </button>
                 <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('show')">Cancel</button>
             </div>
         </form>
     </div>
 </div>
 
+<style>
+/* Mobile: buttons move below content */
+@media (max-width: 900px) {
+    .reading-item .feed-item-header .entry-actions {
+        display: none;
+    }
+    
+    .reading-item .entry-actions-mobile {
+        display: flex !important;
+        width: 100%;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .reading-item .entry-actions-mobile .btn-icon {
+        flex: 1;
+    }
+}
+
+@media (min-width: 901px) {
+    .reading-item .entry-actions-mobile {
+        display: none !important;
+    }
+}
+</style>
+
 {{if .Active}}
     {{range .Active}}
-    <div class="card">
-        <h3 style="margin: 0 0 0.5rem 0;"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer" style="color: var(--text-primary); text-decoration: none;">{{.Title}}</a></h3>
-        <div style="font-size: 0.875rem; color: var(--text-tertiary); word-break: break-all; margin-bottom: 0.5rem;">{{.URL}}</div>
+    <div class="feed-item reading-item">
+        <div class="feed-item-header">
+            <h3 class="feed-item-title">
+                <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a>
+            </h3>
+            <div class="entry-actions">
+                <form action="/reading-list/{{.RKey}}/archive" method="POST" style="display:inline">
+                    <button type="submit" class="btn-icon-only btn-success" title="Mark as read">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div class="feed-item-meta">
+            Added {{.CreatedAt.Format "Jan 2, 2006"}}
+        </div>
         {{if .Description}}
-        <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary);">{{.Description}}</p>
+        <p class="feed-item-description">{{.Description}}</p>
         {{end}}
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 0.875rem; color: var(--text-tertiary);">Added {{.CreatedAt.Format "Jan 2, 2006"}}</div>
-            <form action="/reading-list/{{.RKey}}/archive" method="POST" style="display:inline">
-                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+        
+        <!-- Mobile action buttons -->
+        <div class="entry-actions-mobile">
+            <form action="/reading-list/{{.RKey}}/archive" method="POST" style="flex: 1;">
+                <button type="submit" class="btn-icon btn-success" style="width: 100%;">
+                    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>Done</span>
+                </button>
             </form>
         </div>
     </div>

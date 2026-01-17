@@ -16,10 +16,8 @@ Each should be addressed one at a time, and the item should be removed after imp
 2. [medium priority] Store more than 200 feed entries in blob. We have plenty of storage room, and there
    isn't really a downside since we already fetch the entire rss feed anyway.
 
-3. [High priority] Swap to blob storage for archived reading list items? It would be cool to have
-   an actual archive of read articles somewhere, storing records for that may result in too many.
-   This would involve making a new blob lexicon, it would store link, name, and shortened desc (100-120 chars?)
-   Deleting from archive would remove from the blob, and adding to archive would add to the blob.
-   Remove the archived field from the reading list item lexicon.
+3. [Future work] scroll to top with pull down on mobile or page refresh (maybe not page refresh) should refresh browser cache of feed data. This may be a bit weird since this isn't a native app -- cross-device syncing could probably be handled differently
 
-## Fixes
+## Bugs
+
+(none currently)

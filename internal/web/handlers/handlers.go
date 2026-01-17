@@ -623,7 +623,7 @@ func (h *FeedHandler) ImportSelectedLeafletFeeds(w http.ResponseWriter, r *http.
 	}
 
 	// Get the selected publication URIs from the form
-	publicationURIs := r.Form["publication"]
+	publicationURIs := r.Form["publications"]
 	if len(publicationURIs) == 0 {
 		http.Error(w, "No feeds selected", http.StatusBadRequest)
 		return
