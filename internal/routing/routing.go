@@ -59,7 +59,10 @@ func SetupRoutes(app *handlers.App) *http.ServeMux {
 	mux.Handle("POST /feeds/import/leaflet/import", cop.Handler(http.HandlerFunc(feedHandler.ImportSelectedLeafletFeeds)))
 	mux.Handle("POST /feeds/refresh", cop.Handler(http.HandlerFunc(feedHandler.RefreshFeeds)))
 	mux.HandleFunc("GET /feeds/cache", feedHandler.GetFeedCache)
-	mux.HandleFunc("GET /feeds/cache/debug", feedHandler.DebugFeedCache)
+	// Debug endpoint only available in development
+	if !app.IsProduction {
+		mux.HandleFunc("GET /feeds/cache/debug", feedHandler.DebugFeedCache)
+	}
 	mux.Handle("POST /feeds/{rkey}/delete", cop.Handler(http.HandlerFunc(feedHandler.DeleteFeed)))
 	mux.HandleFunc("GET /feeds/{rkey}/view", homeHandler.FeedView)
 

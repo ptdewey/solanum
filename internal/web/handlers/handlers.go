@@ -730,8 +730,8 @@ func (h *FeedHandler) MarkEntryAsRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entryURL := strings.TrimSpace(r.FormValue("url"))
-	title := strings.TrimSpace(r.FormValue("title"))
-	description := strings.TrimSpace(r.FormValue("description"))
+	title := feed.StripHTML(strings.TrimSpace(r.FormValue("title")))
+	description := feed.StripHTML(strings.TrimSpace(r.FormValue("description")))
 
 	if entryURL == "" {
 		http.Error(w, "URL is required", http.StatusBadRequest)
@@ -821,26 +821,35 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch items from all feeds
 	var allItems []pds.FeedCacheItem
-	for _, feed := range feeds {
-		if !feed.IsActive {
+	for _, feedItem := range feeds {
+		if !feedItem.IsActive {
 			continue
 		}
 
 		// Fetch feed items for the PDS blob cache
-		metadata, items, err := h.app.FeedService.FetchFeed(r.Context(), feed.URL)
+		metadata, items, err := h.app.FeedService.FetchFeed(r.Context(), feedItem.URL)
 		if err != nil {
-			h.app.Logger.Error().Err(err).Str("url", feed.URL).Msg("fetch feed")
+			h.app.Logger.Error().Err(err).Str("url", feedItem.URL).Msg("fetch feed")
 			continue
 		}
 
 		// Use feed title from metadata if available, otherwise use stored title
-		feedTitle := feed.Title
+		feedTitle := feedItem.Title
 		if metadata.Title != "" {
 			feedTitle = metadata.Title
 		}
 
 		// Convert to cache items
 		for _, item := range items {
+			// Validate item URL to prevent javascript: or other dangerous schemes
+			if !feed.IsValidItemURL(item.Link) {
+				h.app.Logger.Warn().
+					Str("url", item.Link).
+					Str("feed", feedItem.URL).
+					Msg("skipping feed item with invalid URL scheme")
+				continue
+			}
+
 			description := item.Description
 			if len(description) > descLimit {
 				description = description[:descLimit] + "..."
@@ -848,7 +857,7 @@ func (h *FeedHandler) RefreshFeeds(w http.ResponseWriter, r *http.Request) {
 
 			cacheItem := pds.FeedCacheItem{
 				ID:          item.ID,
-				FeedURL:     feed.URL,
+				FeedURL:     feedItem.URL,
 				FeedTitle:   feedTitle,
 				Title:       item.Title,
 				Description: description,
@@ -981,8 +990,8 @@ func (h *FeedHandler) GetFeedCache(w http.ResponseWriter, r *http.Request) {
 			Err(err).
 			Str("cid", cache.Blob.Ref.Link).
 			Str("did", session.DID.String()).
-			Msg("get blob failed - this is likely a PDS bug, see error for details")
-		http.Error(w, "Failed to load cache due to PDS blob serving issue", http.StatusInternalServerError)
+			Msg("failed to retrieve blob from PDS")
+		http.Error(w, "Failed to load cache", http.StatusInternalServerError)
 		return
 	}
 
@@ -1201,8 +1210,8 @@ func (h *ReadingListHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemURL := strings.TrimSpace(r.FormValue("url"))
-	title := strings.TrimSpace(r.FormValue("title"))
-	description := strings.TrimSpace(r.FormValue("description"))
+	title := feed.StripHTML(strings.TrimSpace(r.FormValue("title")))
+	description := feed.StripHTML(strings.TrimSpace(r.FormValue("description")))
 
 	if itemURL == "" {
 		http.Error(w, "URL is required", http.StatusBadRequest)

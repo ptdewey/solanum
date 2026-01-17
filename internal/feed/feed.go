@@ -346,3 +346,12 @@ func StripHTML(s string) string {
 
 	return strings.TrimSpace(text)
 }
+
+// IsValidItemURL checks if a URL is a valid http or https URL.
+// This prevents javascript:, data:, and other dangerous URL schemes from being stored.
+func IsValidItemURL(itemURL string) bool {
+	if itemURL == "" {
+		return false
+	}
+	return strings.HasPrefix(itemURL, "http://") || strings.HasPrefix(itemURL, "https://")
+}

@@ -338,7 +338,9 @@ func (c *Client) GetBlob(ctx context.Context, cid string) ([]byte, string, error
 
 	// Check if we got a file stream object instead of actual data (PDS bug)
 	if isFileStreamObject(data) {
-		return nil, "", fmt.Errorf("PDS returned file stream object instead of blob data. This is a bug in the official Bluesky PDS. CID: %s. The blob was likely uploaded with an incompatible method. Try refreshing the feed cache to re-upload", cid)
+		// Log the detailed error internally for debugging
+		fmt.Printf("PDS returned file stream object instead of blob data for CID: %s. This is a bug in the official Bluesky PDS. The blob was likely uploaded with an incompatible method.\n", cid)
+		return nil, "", fmt.Errorf("failed to retrieve blob data")
 	}
 
 	// Default mime type (indigo doesn't return it from SyncGetBlob)

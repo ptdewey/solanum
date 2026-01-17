@@ -3,3 +3,6 @@ run:
 
 nix-run:
     @nix run .#default
+
+test:
+    @go test ./... -cover -coverprofile=cover.out
