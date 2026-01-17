@@ -273,6 +273,8 @@ nav {
   font-size: 0.875rem;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   min-height: 44px; /* Better touch target for mobile */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn:hover {
@@ -693,6 +695,11 @@ textarea,
   .entry-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .feed-item > div:first-child {
+    flex-wrap: wrap;
   }
 }
 

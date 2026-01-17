@@ -60,11 +60,13 @@
     color: var(--moss-500);
     font-size: 0.875rem;
     font-weight: 500;
+    flex-shrink: 0;
 }
 
 .feed-badge a {
     color: var(--moss-500);
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .feed-badge a:hover {
@@ -90,7 +92,9 @@
 .entry-actions {
     display: flex;
     gap: 0.25rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    align-items: center;
 }
 
 .feed-item.removing {
@@ -105,6 +109,25 @@
 
 .feed-item.fade-out {
     animation: fadeOut 0.3s ease-out forwards;
+}
+
+.feed-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .feed-item-header {
+        flex-wrap: wrap;
+    }
+    
+    .entry-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
 </style>
 
@@ -340,7 +363,7 @@ function renderItems() {
         
         html += `
         <div class="feed-item" id="entry-${escapeHtml(item.link).replace(/[^a-zA-Z0-9]/g, '_')}">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <div class="feed-item-header">
                 <span class="feed-badge"><a href="${feedLink}">${escapeHtml(item.feedTitle)}</a></span>
                 <div class="entry-actions">
                     <button 

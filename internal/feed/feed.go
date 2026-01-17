@@ -177,7 +177,7 @@ func (p *Parser) ParseURL(ctx context.Context, url string) (*Metadata, []Item, e
 			ID:          fi.GUID,
 			FeedURL:     url,
 			Title:       fi.Title,
-			Description: fi.Description,
+			Description: StripHTML(fi.Description),
 			Link:        fi.Link,
 			Content:     fi.Content,
 		}
@@ -310,4 +310,39 @@ func extractMetadata(n *html.Node, metadata *HTMLMetadata) {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		extractMetadata(c, metadata)
 	}
+}
+
+// StripHTML removes HTML tags from a string and returns plain text.
+// It properly handles HTML entities and nested tags.
+func StripHTML(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	// Parse the HTML
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		// If parsing fails, just return the original string
+		// (it might not be HTML)
+		return strings.TrimSpace(s)
+	}
+
+	// Extract text content
+	var buf strings.Builder
+	var extractText func(*html.Node)
+	extractText = func(n *html.Node) {
+		if n.Type == html.TextNode {
+			buf.WriteString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			extractText(c)
+		}
+	}
+	extractText(doc)
+
+	// Normalize whitespace
+	text := buf.String()
+	text = strings.Join(strings.Fields(text), " ")
+
+	return strings.TrimSpace(text)
 }
