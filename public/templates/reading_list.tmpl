@@ -17,6 +17,17 @@
     </div>
 </div>
 
+<div class="search-form">
+    <input
+        type="text"
+        id="searchInput"
+        placeholder="Search reading list..."
+        class="input"
+        oninput="performSearch()"
+    />
+    <button id="clearSearchBtn" class="btn btn-secondary" onclick="clearSearch()" style="display: none;">Clear</button>
+</div>
+
 <!-- Modal for adding links -->
 <div id="add-modal" class="modal" onclick="if(event.target === this) this.classList.remove('show')">
     <div class="modal-content">
@@ -49,19 +60,25 @@
 </div>
 
 <style>
+.search-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
 /* Mobile: buttons move below content */
 @media (max-width: 900px) {
     .reading-item .feed-item-header .entry-actions {
         display: none;
     }
-    
+
     .reading-item .entry-actions-mobile {
         display: flex !important;
         width: 100%;
         gap: 0.5rem;
         margin-top: 1rem;
     }
-    
+
     .reading-item .entry-actions-mobile .btn-icon {
         flex: 1;
     }
@@ -74,9 +91,10 @@
 }
 </style>
 
+<div id="readingListResults">
 {{if .Active}}
     {{range .Active}}
-    <div class="feed-item reading-item">
+    <div class="feed-item reading-item" data-title="{{.Title}}" data-description="{{.Description}}" data-url="{{.URL}}">
         <div class="feed-item-header">
             <h3 class="feed-item-title">
                 <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a>
@@ -95,7 +113,7 @@
         {{if .Description}}
         <p class="feed-item-description">{{.Description}}</p>
         {{end}}
-        
+
         <!-- Mobile action buttons -->
         <div class="entry-actions-mobile">
             <form action="/reading-list/{{.RKey}}/archive" method="POST" style="flex: 1;">
@@ -112,5 +130,57 @@
         <p>No items in your reading list yet.</p>
     </div>
 {{end}}
+</div>
+
+<div id="noResultsMessage" class="empty-state" style="display: none;">
+    <p>No items match your search.</p>
+</div>
+
+<script>
+function performSearch() {
+    const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+    const clearBtn = document.getElementById('clearSearchBtn');
+    const items = document.querySelectorAll('.reading-item');
+    const noResultsMessage = document.getElementById('noResultsMessage');
+
+    if (searchQuery) {
+        clearBtn.style.display = 'block';
+    } else {
+        clearBtn.style.display = 'none';
+    }
+
+    let visibleCount = 0;
+
+    items.forEach(item => {
+        const title = item.dataset.title.toLowerCase();
+        const description = (item.dataset.description || '').toLowerCase();
+        const url = item.dataset.url.toLowerCase();
+
+        const matches = title.includes(searchQuery) ||
+                       description.includes(searchQuery) ||
+                       url.includes(searchQuery);
+
+        if (matches || !searchQuery) {
+            item.style.display = '';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // Show "no results" message if no items are visible and we have a search query
+    if (visibleCount === 0 && searchQuery && items.length > 0) {
+        noResultsMessage.style.display = 'block';
+    } else {
+        noResultsMessage.style.display = 'none';
+    }
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('clearSearchBtn').style.display = 'none';
+    performSearch();
+}
+</script>
 
 {{end}}
